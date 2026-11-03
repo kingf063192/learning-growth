@@ -79,3 +79,9 @@ button.big{width:100%;min-height:52px;font-size:16.5px;border-radius:12px}
 .wg-ev.fixed{background:#f3f0ff;border-color:#ddd3f5;color:#4f3d8a}
 .wg-ev.done{opacity:.55;text-decoration:line-through}
 .wg-ev.conflict{outline:2px solid #e8a3a3}
+
+.feas{font-size:10.5px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);margin-left:auto;margin-right:6px}
+.feas.ok{color:#2f8f6b;background:#eaf7f0}
+.feas.warn{color:#b8860b;background:#fdf6e3}
+.feas.bad{color:#b4453f;background:#fdecec}
+.thesis-now{border:1px dashed var(--pink);background:#fffafc}
