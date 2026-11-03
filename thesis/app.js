@@ -33,6 +33,21 @@ async function load(){
   }catch(e){toast('加载失败：'+e.message);render()}
 }
 
+
+async function doAuth(signup){
+  const em=document.getElementById('qEmail'),pw=document.getElementById('qPass');
+  const email=(em&&em.value||'').trim(),pass=(pw&&pw.value||'');
+  if(!email||!pass){toast('填邮箱和密码');return}
+  try{
+    const r=await fetch(config.url+(signup?'/auth/v1/signup':'/auth/v1/token?grant_type=password'),
+      {method:'POST',headers:H(),body:JSON.stringify({email,password:pass})});
+    const d=await r.json();
+    if(!r.ok)throw Error(d.error_description||d.msg||'失败');
+    if(!d.access_token){toast('注册成功，去邮箱点确认链接后再登录');return}
+    session=d;localStorage.setItem('thesis-session',JSON.stringify(d));
+    await load();toast(signup?'注册成功':'登录成功');
+  }catch(e){toast(e.message)}
+}
 function render(){
   const app=$('#app');
   if(!code||!data){
@@ -417,16 +432,20 @@ render = function(){
       <div class="row-actions" style="flex-direction:column">
         <button class="primary" data-role="owner" style="width:100%">我是学生（论文作者本人）</button>
         <button data-role="advisor" style="width:100%;margin-top:8px">我是导师（查看并确认）</button>
-      </div></div>`;
+      </div>
+      <p class="meta" style="margin-top:12px">学生需要登录：<a href="#" id="toLogin">学生登录 / 注册</a></p></div>`;
     document.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{role=b.getAttribute('data-role');localStorage.setItem('thesis-role',role);render()});
+    const tl2=$('#toLogin');if(tl2)tl2.onclick=e=>{e.preventDefault();role='owner';localStorage.setItem('thesis-role','owner');code='';data=null;localStorage.removeItem('thesis-code');render();setTimeout(()=>{const b2=document.getElementById('owner');if(b2)b2.scrollIntoView({block:'center'})},60)};
     return;
   }
   const sm=stageMap(), defs=defsOf(), total=defs.length;
   const doneN=defs.filter(s=>stageDone(sm,s.id)).length, pct=total?Math.round(doneN/total*100):0;
   const tabs=[['stage','阶段'],['files','文件'],['msg','留言'],['ai','AI 助手'],['info','说明']];
   let body='';
+  const loginPanel=(role==='owner'&&!session)?`<div class="panel"><h2>学生登录</h2><p class="meta">登录后才能生成分享码、管理阶段。</p>
+    <div class="form"><input id="qEmail" placeholder="邮箱" type="email"><input id="qPass" placeholder="密码" type="password"><button class="primary" id="qLogin">登录</button><button id="qSignup">注册</button></div></div>`:'';
   if(tab==='stage'){
-    body=`<div class="panel"><div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
+    body=`${loginPanel}<div class="panel"><div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
       <div class="bar"><i style="width:${pct}%"></i></div><p class="meta">${doneN}/${total} 阶段双方确认 · 都确认后进入下一阶段</p>
       <div class="manage">${role==='owner'?`<button id="mgBtn">${manage?'完成管理':'管理阶段'}</button><button id="addStage">＋ 新增阶段</button>`:''}<button id="refresh">刷新</button></div></div>
       ${defs.map((st,i)=>stageCard(st,i,sm)).join('')}`;
@@ -449,6 +468,8 @@ render = function(){
   app.innerHTML=`<div class="tabs">${tabs.map(([k,n])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}${tPicker()}`;
 
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.getAttribute('data-tab');render()});
+  const ql=$('#qLogin');if(ql)ql.onclick=()=>doAuth(false);
+  const qs=$('#qSignup');if(qs)qs.onclick=()=>doAuth(true);
   const sr=$('#switchRole');if(sr)sr.onclick=()=>{localStorage.removeItem('thesis-role');role='';render()};
   const rf=$('#refresh');if(rf)rf.onclick=()=>load();
   const mg=$('#mgBtn');if(mg)mg.onclick=()=>{manage=!manage;render()};
