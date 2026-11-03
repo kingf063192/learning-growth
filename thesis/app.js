@@ -313,3 +313,222 @@ render = function(){
   });
 };
 load();
+
+/* ===== 页签 / 阶段管理 / AI 导入导出 ===== */
+let tab='stage', manage=false, editStage=null;
+
+function defsOf(){
+  const d=(data&&data.defs)||[];
+  const src=Array.isArray(d)&&d.length?d:STAGES;
+  return src.map((s,i)=>({id:s.id||('c'+(i+1)),t:s.t||s.title||'阶段',d:s.d||s.desc||'',eta:s.eta||'',out:s.out||'',acc:s.acc||'',items:Array.isArray(s.items)?s.items:[]}));
+}
+async function saveDefs(list){
+  await rpc('thesis_def_save',{p_code:code,p_defs:list});
+  await load();
+}
+const INFO_HTML=`<div class="panel"><h2>全流程（可改，改完同步给导师）</h2><ol class="flow">
+<li><div class="b"><div class="t">选题与方向</div><div class="m">黄晶果果浆/皮渣加工与品质；读 10 篇核心文献定创新点</div></div></li>
+<li><div class="b"><div class="t">文献综述</div><div class="m">3000 字，按“原料—工艺—品质—稳定性”写</div></div></li>
+<li><div class="b"><div class="t">开题报告 + 答辩</div><div class="m">背景、目的、内容、方法、进度、预期成果</div></div></li>
+<li><div class="b"><div class="t">预实验 → 正式实验</div><div class="m">参数摸底 → 3–4 轮重复</div></div></li>
+<li><div class="b"><div class="t">数据 → 本科论文 → 英文稿</div><div class="m">统计作图 → 成稿查重 → SCI 稿件</div></div></li>
+<li><div class="b"><div class="t">投稿 → 返修 → 接收</div><div class="m">主投 JFMC，首投不晚于 2027-10-31，目标 2028-02 前接收</div></div></li>
+</ol></div>
+<div class="panel"><h2>投稿策略</h2><table class="jt">
+<tr><th>梯队</th><th>期刊</th><th>说明</th></tr>
+<tr><td class="tier">主投</td><td>JFMC</td><td>数据完整、英文过关；订阅制零 APC</td></tr>
+<tr><td class="tier">有条件首选</td><td>Food Bioscience</td><td>只有机制数据够才先投</td></tr>
+<tr><td class="tier">备选</td><td>JSFA / JFS / IJFST</td><td>被拒或太慢时按序降级</td></tr>
+<tr><td class="tier">保底</td><td>中文核心</td><td>必须 2028-02 前录用时启用</td></tr>
+</table></div>`;
+
+function stageCard(st,i,sm){
+  const s=sm[st.id]||{}, ck=(s.checks||{}), lock=!unlockedById(sm,i,defsOf()), both=!!(s.owner_ok&&s.advisor_ok);
+  const one=(s.owner_ok||s.advisor_ok)&&!both;
+  const cls=both?'done':lock?'locked':'now';
+  const badge=both?'<span class="sb done">已确认</span>':one?'<span class="sb wait">待对方确认</span>':lock?'<span class="sb lock">未解锁</span>':'<span class="sb now">进行中</span>';
+  const scm=(data.comments||[]).filter(c=>c.task_id===st.id);
+  const items=(st.items||[]).map((it,j)=>{
+    const c=ck[j]||{};const done=typeof c==='boolean'?c:!!c.done;const edited=!!(c&&c.text&&c.text!==it);
+    return `<li class="cli"><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${done?'checked':''}> ${edited?`<s class="orig">${esc(it)}</s> <span class="newtxt">${esc(c.text)}</span>`:`<span>${esc(it)}</span>`}</label>
+      ${edited?'<span class="edtag">已改</span>':''}<button class="mini" data-ed="${st.id}:${j}">修改/批注</button>
+      ${c&&c.note?`<div class="note">📝 ${esc(c.note)}</div>`:''}
+      ${(c&&c.history&&c.history.length)?`<div class="hist">${c.history.map(h=>`<div>${esc(h.by)} ${esc((h.at||'').slice(5,10))} 把「${esc(h.from)}」改成「${esc(h.to)}」</div>`).join('')}</div>`:''}
+      ${openEdits.has(st.id+':'+j)?`<div class="editbox"><p class="meta" style="margin:0">原文：${esc(it)}</p><input data-et="${st.id}:${j}" value="${esc((c&&c.text)||'')}" placeholder="修改后的内容（留空=原文）"><textarea data-en="${st.id}:${j}" placeholder="批注">${esc((c&&c.note)||'')}</textarea><button class="primary" data-es="${st.id}:${j}">保存</button><button class="link" data-ec="${st.id}:${j}">取消</button></div>`:''}
+    </li>`;
+  }).join('');
+  return `<div class="stage ${cls}">
+    <div class="sh"><span class="idx">${i+1}</span><div class="st"><b>${esc(st.t)}</b><div class="meta">${esc(st.d)}${st.eta?' · 预计 '+esc(st.eta):''}</div></div>${badge}
+    ${manage?`<div class="sop"><button data-seup="${st.id}">↑</button><button data-sedn="${st.id}">↓</button><button class="danger" data-sedel="${st.id}">删</button></div>`:''}</div>
+    ${lock&&!manage?'<p class="meta">上一阶段双方确认后解锁。</p>':`<ul class="cl">${items}</ul>
+    <p class="meta">交付物：${esc(st.out||'—')}<br>验收：${esc(st.acc||'—')}</p>
+    <div class="sf"><button class="${s.owner_ok?'primary':''}" data-sok="${st.id}:owner">${s.owner_ok?'✓ 我方已确认':'我方确认'}</button>
+      <button class="${s.advisor_ok?'primary':''}" data-sok="${st.id}:advisor">${s.advisor_ok?'✓ 对方已确认':'对方确认'}</button>
+      <button class="link" data-scmt="${st.id}">评语 (${scm.length})</button></div>
+    ${openComments.has(st.id)?`<div class="sub">${scm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有评语</p>'}
+      <div class="form"><textarea data-body="${st.id}" placeholder="对这一步的评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div>
+      ${(data.files||[]).filter(f=>f.task_id===st.id).map(f=>`<p><a href="${config.url}/storage/v1/object/public/thesis-files/${encodeURI(f.path)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a></p>`).join('')}
+      <label class="upload">上传文件<input type="file" data-sup="${st.id}" hidden></label></div>`:''}`}
+  </div>`;
+}
+function unlockedById(sm,i,defs){for(let k=0;k<i;k++){const s=sm[defs[k].id];if(!(s&&s.owner_ok&&s.advisor_ok))return false}return true}
+
+function stageModal(st){
+  const isNew=!st;
+  const s=st||{id:'c'+Date.now(),t:'',d:'',eta:'',out:'',acc:'',items:[]};
+  const box=document.createElement('div');box.className='modal';
+  box.innerHTML=`<div class="box"><h3>${isNew?'新增阶段':'编辑阶段'}</h3>
+    <label>阶段名称</label><input id="mT" value="${esc(s.t)}">
+    <label>一句话说明</label><input id="mD" value="${esc(s.d)}">
+    <label>预计时长</label><input id="mE" value="${esc(s.eta||'')}" placeholder="如 2 周">
+    <label>交付物</label><input id="mO" value="${esc(s.out||'')}">
+    <label>验收标准</label><input id="mA" value="${esc(s.acc||'')}">
+    <label>清单（一行一条）</label><textarea id="mI">${esc((s.items||[]).join('\n'))}</textarea>
+    <div class="acts"><button id="mOk" class="primary">保存</button><button id="mNo">取消</button></div></div>`;
+  document.body.appendChild(box);
+  box.querySelector('#mNo').onclick=()=>box.remove();
+  box.querySelector('#mOk').onclick=async()=>{
+    const defs=defsOf();
+    const item=defs.find(x=>x.id===s.id);
+    const obj={id:s.id,t:box.querySelector('#mT').value.trim()||'未命名阶段',d:box.querySelector('#mD').value.trim(),
+      eta:box.querySelector('#mE').value.trim(),out:box.querySelector('#mO').value.trim(),acc:box.querySelector('#mA').value.trim(),
+      items:box.querySelector('#mI').value.split('\n').map(x=>x.trim()).filter(Boolean)};
+    if(item)Object.assign(item,obj);else defs.push(obj);
+    box.remove();
+    try{await saveDefs(defs);toast('已保存阶段')}catch(e){toast(e.message)}
+  };
+}
+
+render = function(){
+  const app=$('#app');
+  if(!code||!data){
+    app.innerHTML=`<div class="panel"><h2>输入导师分享码</h2><p class="meta">由学生本人提供，形如 THESIS-7K2M</p>
+      <form id="codeForm"><input id="codeInput" placeholder="THESIS-XXXX" value="${esc(code)}"><button class="primary">打开</button></form>
+      ${session?'<p class="meta" style="margin-top:12px">学生本人？<a href="#" id="ownerLink">生成 / 管理分享码</a></p>':''}</div><div id="owner"></div>`;
+    $('#codeForm').onsubmit=e=>{e.preventDefault();code=$('#codeInput').value.trim().toUpperCase();load()};
+    const ol=$('#ownerLink');if(ol)ol.onclick=e=>{e.preventDefault();renderOwner()};
+    return;
+  }
+  const sm=stageMap(), defs=defsOf(), total=defs.length;
+  const doneN=defs.filter(s=>stageDone(sm,s.id)).length, pct=total?Math.round(doneN/total*100):0;
+  const tabs=[['stage','阶段'],['files','文件'],['msg','留言'],['ai','AI 助手'],['info','说明']];
+  let body='';
+  if(tab==='stage'){
+    body=`<div class="panel"><div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
+      <div class="bar"><i style="width:${pct}%"></i></div><p class="meta">${doneN}/${total} 阶段双方确认 · 都确认后进入下一阶段</p>
+      <div class="manage">${session?`<button id="mgBtn">${manage?'完成管理':'管理阶段'}</button><button id="addStage">＋ 新增阶段</button>`:''}<button id="refresh">刷新</button></div></div>
+      ${defs.map((st,i)=>stageCard(st,i,sm)).join('')}`;
+  } else if(tab==='files'){
+    const fs=(data.files||[]);
+    body=`<div class="panel"><h2>全部文件 · ${fs.length}</h2>${fs.length?fs.map(f=>`<p><a href="${config.url}/storage/v1/object/public/thesis-files/${encodeURI(f.path)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a> <span class="meta">${esc(f.uploaded_by||'')} · ${esc((f.created_at||'').slice(0,10))}</span></p>`).join(''):'<p class="meta">还没有文件。到某个阶段里点“上传文件”。</p>'}</div>`;
+  } else if(tab==='msg'){
+    const cm=(data.comments||[]).filter(c=>!c.task_id);
+    body=`<div class="panel"><h2>留言板</h2>${cm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有留言</p>'}
+      <div class="form"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></div>`;
+  } else if(tab==='ai'){
+    body=`<div class="panel"><h2>AI 助手</h2>
+      <p class="meta">用途：把阶段/清单/评语导出给 AI，让 AI 帮你改写成更清楚的表述，再把结果粘回来一键更新。<br>不需要 API key，不产生额外费用。</p>
+      <div class="row-actions"><button id="aiCopy" class="primary">复制当前状态</button><button id="aiPaste">导入 AI 结果</button></div>
+      <textarea id="aiBox" class="aiarea" placeholder="点“复制当前状态”，把内容发给 AI；或把 AI 返回的 JSON 粘到这里再点“导入 AI 结果”"></textarea>
+      <p class="meta">支持的格式：{"type":"thesis-update","stages":[{...}],"comments":[{"stage_id":"s1","body":"..."}],"items":[{"stage_id":"s1","index":0,"text":"新表述","note":"批注"}]}</p></div>`;
+  } else {
+    body=INFO_HTML;
+  }
+  app.innerHTML=`<div class="tabs">${tabs.map(([k,n])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}`;
+
+  document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.getAttribute('data-tab');render()});
+  const rf=$('#refresh');if(rf)rf.onclick=()=>load();
+  const mg=$('#mgBtn');if(mg)mg.onclick=()=>{manage=!manage;render()};
+  const ad=$('#addStage');if(ad)ad.onclick=()=>stageModal(null);
+  document.querySelectorAll('[data-seup],[data-sedn],[data-sedel]').forEach(b=>b.onclick=async()=>{
+    const defs=defsOf();const id=b.getAttribute('data-seup')||b.getAttribute('data-sedn')||b.getAttribute('data-sedel');
+    const i=defs.findIndex(x=>x.id===id);if(i<0)return;
+    if(b.hasAttribute('data-sedel')){
+      if(!confirm('删除阶段「'+defs[i].t+'」？'))return;defs.splice(i,1);
+    } else {
+      const j=b.hasAttribute('data-seup')?i-1:i+1;if(j<0||j>=defs.length)return;
+      const tmp=defs[i];defs[i]=defs[j];defs[j]=tmp;
+    }
+    try{await saveDefs(defs);toast('已更新')}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-st]').forEach(el=>el.onchange=async()=>{
+    const sid=el.dataset.st,j=el.dataset.j;const cur2={...(checksOf(stageMap(),sid))};
+    const old=cur2[j];const obj=typeof old==='object'&&old?{...old}:{};obj.done=el.checked;cur2[j]=obj;
+    try{await stageSet(sid,cur2,null,null)}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-ed]').forEach(el=>el.onclick=()=>{const k=el.getAttribute('data-ed');openEdits.has(k)?openEdits.delete(k):openEdits.add(k);render()});
+  document.querySelectorAll('[data-ec]').forEach(el=>el.onclick=()=>{openEdits.delete(el.getAttribute('data-ec'));render()});
+  document.querySelectorAll('[data-es]').forEach(el=>el.onclick=async()=>{
+    const k=el.getAttribute('data-es');const [sid,j]=k.split(':');
+    const txt=document.querySelector(`[data-et="${k}"]`).value.trim();
+    const note=document.querySelector(`[data-en="${k}"]`).value.trim();
+    const cur2={...(checksOf(stageMap(),sid))},old=cur2[j];
+    const obj=typeof old==='object'&&old?{...old}:{done:!!old};
+    const st=defsOf().find(x=>x.id===sid);
+    const orig=st?(st.items[+j]||''):'';
+    const oldText=(obj.text||'').trim()||orig,newText=txt||orig;
+    if(newText!==oldText)obj.history=(obj.history||[]).concat([{by:roleName(),at:new Date().toISOString(),from:oldText,to:newText}]).slice(-10);
+    obj.text=txt;obj.note=note;cur2[j]=obj;
+    try{await stageSet(sid,cur2,null,null);openEdits.delete(k);toast('已保存')}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-sok]').forEach(el=>el.onclick=async()=>{
+    const [sid,who]=el.getAttribute('data-sok').split(':');const s=stageMap()[sid]||{};
+    try{ if(who==='owner')await stageSet(sid,s.checks||{},!(s.owner_ok),null); else await stageSet(sid,s.checks||{},null,!(s.advisor_ok)); }catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-scmt]').forEach(el=>el.onclick=()=>{const id=el.getAttribute('data-scmt');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
+  document.querySelectorAll('[data-send]').forEach(el=>el.onclick=async()=>{
+    const id=el.getAttribute('data-send');const body=document.querySelector(`[data-body="${id}"]`).value.trim();
+    if(!body)return;try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:authorName(),p_body:body});load()}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
+    const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
+    if(f.size>10*1024*1024){toast('文件超过 10 MB');return}
+    const name=authorName();
+    const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
+    try{
+      const r=await fetch(config.url+'/storage/v1/object/thesis-files/'+encodeURI(path),{method:'POST',headers:{apikey:config.key,Authorization:'Bearer '+config.key,'Content-Type':f.type||'application/octet-stream'},body:f});
+      if(!r.ok)throw Error('上传失败 '+(await r.text()).slice(0,120));
+      await rpc('thesis_file_add',{p_code:code,p_task_id:id,p_name:f.name,p_path:path,p_by:name});toast('已上传');load();
+    }catch(e){toast(e.message)}
+  });
+  const gs=$('#gbSend');if(gs)gs.onclick=async()=>{
+    const b=$('#gbBody').value.trim();if(!b)return;
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:null,p_author:authorName(),p_body:b});$('#gbBody').value='';load()}catch(e){toast(e.message)}
+  };
+  const ac=$('#aiCopy');if(ac)ac.onclick=()=>{
+    const sm2=stageMap();
+    const payload={type:'thesis-state',advisor:data.advisor,stages:defsOf().map(s=>({id:s.id,title:s.t,items:s.items,checks:sm2[s.id]?.checks||{},owner_ok:!!sm2[s.id]?.owner_ok,advisor_ok:!!sm2[s.id]?.advisor_ok})),
+      comments:(data.comments||[]).map(c=>({stage_id:c.task_id,author:c.author,body:c.body}))};
+    const txt='请以论文导师的视角，把下面 JSON 里的阶段名/清单/交付物写得更具体、可执行。只输出 thesis-update 格式的 JSON：\n'+JSON.stringify(payload,null,1);
+    $('#aiBox').value=txt;
+    try{navigator.clipboard.writeText(txt);toast('已复制，发给 AI 即可')}catch(e){toast('已生成，手动复制')}
+  };
+  const ap2=$('#aiPaste');if(ap2)ap2.onclick=async()=>{
+    try{
+      const raw=$('#aiBox').value.replace(/^[\s\S]*?(\{)/,'$1');
+      const o=JSON.parse(raw);
+      if(o.type!=='thesis-update')throw Error('不是 thesis-update');
+      if(Array.isArray(o.stages)&&o.stages.length){
+        const defs=defsOf();
+        o.stages.forEach(ns=>{
+          const i=defs.findIndex(x=>x.id===ns.id);
+          const obj={id:ns.id,t:ns.title||ns.t||'阶段',d:ns.desc||ns.d||'',eta:ns.eta||'',out:ns.out||'',acc:ns.acc||'',items:ns.items||[]};
+          if(i>=0)defs[i]={...defs[i],...obj};else defs.push(obj);
+        });
+        await saveDefs(defs);
+      }
+      if(Array.isArray(o.items)){
+        for(const it of o.items){
+          const cur2={...(checksOf(stageMap(),it.stage_id))};
+          const old=cur2[it.index];const obj=typeof old==='object'&&old?{...old}:{done:!!old};
+          if(it.text)obj.text=it.text;if(it.note)obj.note=it.note;
+          cur2[it.index]=obj;
+          await rpc('thesis_stage_set',{p_code:code,p_stage:it.stage_id,p_checks:cur2,p_owner:null,p_advisor:null});
+        }
+      }
+      if(Array.isArray(o.comments))for(const c of o.comments){await rpc('thesis_comment_add',{p_code:code,p_task_id:c.stage_id||null,p_author:authorName(),p_body:c.body})}
+      toast('已导入');await load();
+    }catch(e){toast('导入失败：'+e.message)}
+  };
+};
+load();
