@@ -525,3 +525,34 @@ renderToday = function(){
   </div>`;
 };
 ensureDailyStudy();
+
+/* ===== 学习页：默认 5 张卡，避免太长 ===== */
+let showAllCourses=false;
+renderCourses = function(){
+  const cs=store.all('course');
+  let allDone=0,allTot=0;
+  cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
+  const totalPct=allTot?Math.round(allDone/allTot*100):0;
+  const shown=showAllCourses?cs:cs.slice(0,5);
+  const cards=shown.map(c=>{
+    const ts=tasks().filter(t=>t.courseId===c.id);
+    const p=progress(ts),dn=ts.filter(t=>t.done).length;
+    const chs=store.all('chapter').filter(x=>x.courseId===c.id);
+    const next=ts.filter(t=>!t.done).sort((a,b)=>((a.date||'9999')+(a.start||'99')).localeCompare((b.date||'9999')+(b.start||'99')))[0];
+    const col=courseColor(c.id);
+    return `<div class="panel course-card" style="border-left:4px solid ${col}">
+      <div class="cc-head"><b>${esc(c.title)}</b><span class="cc-pct" style="color:${col}">${p}%</span></div>
+      <div class="progress"><i style="width:${p}%;background:${col}"></i></div>
+      <p class="meta">${dn}/${ts.length} 步 · ${chs.length} 章${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>
+      ${next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:''}
+    </div>`;
+  }).join('');
+  return `<div class="panel"><div class="cc-head"><b>总进度</b><span class="cc-pct">${totalPct}%</span></div><div class="progress"><i style="width:${totalPct}%"></i></div><p class="meta">按重要度加权；颜色代表不同科目。</p><div class="toolbar" style="margin-top:8px"><button data-goto="review">复习卡片</button>${action('新增目标','newCourse')}</div></div>
+  <div class="course-list">${cards}</div>
+  ${cs.length>5&&!showAllCourses?`<button class="link-btn" id="moreCourses">展开全部 ${cs.length} 个目标</button>`:''}
+  ${weightPanel()}`;
+};
+document.addEventListener('click',e=>{
+  if(e.target.id==='moreCourses'){e.preventDefault();e.stopImmediatePropagation();showAllCourses=true;render()}
+},true);
+ensureDailyStudy();
