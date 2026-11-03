@@ -4,16 +4,17 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function authorName(){
+  if(role==='advisor')return '导师';
   try{
     const s=JSON.parse(localStorage.getItem('thesis-session')||'null');
     if(s&&s.user){
       const e=s.user.email||'';
-      return (s.user.user_metadata&&(s.user.user_metadata.name||s.user.user_metadata.full_name))||e.split('@')[0]||'我';
+      return (s.user.user_metadata&&(s.user.user_metadata.name||s.user.user_metadata.full_name))||e.split('@')[0]||'学生';
     }
   }catch(e){}
-  return '对方';
+  return '学生';
 }
-function roleName(){try{const s=JSON.parse(localStorage.getItem('thesis-session')||'null');return s&&s.user?'我':'导师'}catch(e){return '对方'}}
+function roleName(){return role==='advisor'?'导师':'学生'}
 const H=()=>({apikey:config.key,'Content-Type':'application/json'});
 let code=new URLSearchParams(location.search).get('code')||localStorage.getItem('thesis-code')||'';
 let data=null, session=JSON.parse(localStorage.getItem('thesis-session')||'null');
@@ -46,7 +47,8 @@ function render(){
   const ts=data.tasks||[], doneN=ts.filter(t=>t.done).length, pct=ts.length?Math.round(doneN/ts.length*100):0;
   const shown=filter==='todo'?ts.filter(t=>!t.done):ts;
   const cm=data.comments||[], files=data.files||[];
-  app.innerHTML=`<div class="panel"><div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
+  app.innerHTML=`<div class="panel"><div class="rolebar"><span class="rolebadge ${role}">${role==='owner'?'学生端':'导师端'}</span><span class="meta">当前身份：${role==='owner'?'学生（论文作者）':'导师（查看与确认）'}</span><button class="link" id="switchRole">切换身份</button></div>
+      <div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
     <p class="meta">${doneN} / ${ts.length} 步完成 · 双方都可以勾选</p>
     <div class="row-actions"><button id="fTodo" class="${filter==='todo'?'primary':''}">未完成</button><button id="fAll" class="${filter==='all'?'primary':''}">全部</button><button id="refresh">刷新</button><a href="#" id="switch">换分享码</a></div></div>
@@ -316,6 +318,7 @@ load();
 
 /* ===== 页签 / 阶段管理 / AI 导入导出 ===== */
 let tab='stage', manage=false, editStage=null;
+let role=localStorage.getItem('thesis-role')||'';
 
 function defsOf(){
   const d=(data&&data.defs)||[];
@@ -362,8 +365,8 @@ function stageCard(st,i,sm){
     ${manage?`<div class="sop"><button data-seup="${st.id}">↑</button><button data-sedn="${st.id}">↓</button><button class="danger" data-sedel="${st.id}">删</button></div>`:''}</div>
     ${lock&&!manage?'<p class="meta">上一阶段双方确认后解锁。</p>':`<ul class="cl">${items}</ul>
     <p class="meta">交付物：${esc(st.out||'—')}<br>验收：${esc(st.acc||'—')}</p>
-    <div class="sf"><button class="${s.owner_ok?'primary':''}" data-sok="${st.id}:owner">${s.owner_ok?'✓ 我方已确认':'我方确认'}</button>
-      <button class="${s.advisor_ok?'primary':''}" data-sok="${st.id}:advisor">${s.advisor_ok?'✓ 对方已确认':'对方确认'}</button>
+    <div class="sf"><button class="${s.owner_ok?'primary':''}" data-sok="${st.id}:owner">${s.owner_ok?'✓ ':''}学生确认</button>
+      <button class="${s.advisor_ok?'primary':''}" data-sok="${st.id}:advisor">${s.advisor_ok?'✓ ':''}导师确认</button>
       <button class="link" data-scmt="${st.id}">评语 (${scm.length})</button></div>
     ${openComments.has(st.id)?`<div class="sub">${scm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有评语</p>'}
       <div class="form"><textarea data-body="${st.id}" placeholder="对这一步的评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div>
@@ -409,6 +412,15 @@ render = function(){
     const ol=$('#ownerLink');if(ol)ol.onclick=e=>{e.preventDefault();renderOwner()};
     return;
   }
+  if(!role){
+    app.innerHTML=`<div class="panel"><h2>你是谁？</h2><p class="meta">选择身份后，页面文案会跟着变；可以随时在顶部切换。</p>
+      <div class="row-actions" style="flex-direction:column">
+        <button class="primary" data-role="owner" style="width:100%">我是学生（论文作者本人）</button>
+        <button data-role="advisor" style="width:100%;margin-top:8px">我是导师（查看并确认）</button>
+      </div></div>`;
+    document.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{role=b.getAttribute('data-role');localStorage.setItem('thesis-role',role);render()});
+    return;
+  }
   const sm=stageMap(), defs=defsOf(), total=defs.length;
   const doneN=defs.filter(s=>stageDone(sm,s.id)).length, pct=total?Math.round(doneN/total*100):0;
   const tabs=[['stage','阶段'],['files','文件'],['msg','留言'],['ai','AI 助手'],['info','说明']];
@@ -416,7 +428,7 @@ render = function(){
   if(tab==='stage'){
     body=`<div class="panel"><div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
       <div class="bar"><i style="width:${pct}%"></i></div><p class="meta">${doneN}/${total} 阶段双方确认 · 都确认后进入下一阶段</p>
-      <div class="manage">${session?`<button id="mgBtn">${manage?'完成管理':'管理阶段'}</button><button id="addStage">＋ 新增阶段</button>`:''}<button id="refresh">刷新</button></div></div>
+      <div class="manage">${role==='owner'?`<button id="mgBtn">${manage?'完成管理':'管理阶段'}</button><button id="addStage">＋ 新增阶段</button>`:''}<button id="refresh">刷新</button></div></div>
       ${defs.map((st,i)=>stageCard(st,i,sm)).join('')}`;
   } else if(tab==='files'){
     const fs=(data.files||[]);
@@ -437,6 +449,7 @@ render = function(){
   app.innerHTML=`<div class="tabs">${tabs.map(([k,n])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}${tPicker()}`;
 
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.getAttribute('data-tab');render()});
+  const sr=$('#switchRole');if(sr)sr.onclick=()=>{localStorage.removeItem('thesis-role');role='';render()};
   const rf=$('#refresh');if(rf)rf.onclick=()=>load();
   const mg=$('#mgBtn');if(mg)mg.onclick=()=>{manage=!manage;render()};
   const ad=$('#addStage');if(ad)ad.onclick=()=>stageModal(null);
