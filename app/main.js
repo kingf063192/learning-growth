@@ -1179,3 +1179,32 @@ document.addEventListener('click',e=>{
   applyTheme();render();
 },true);
 applyTheme();
+
+/* ===== 数据恢复：课程/章节/任务/固定日程 ===== */
+const RESTORE_KINDS=['course','chapter','task','fixed'];
+async function restoreCourseData(silent){
+  let n=0;
+  for(const r of (content||[])){
+    if(!RESTORE_KINDS.includes(r.kind))continue;
+    const cur=store.get(r.id);
+    if(!cur){await store.merge([r]);n++}
+  }
+  render();
+  try{await cloud.sync()}catch(e){}
+  if(!silent)toast('已恢复 '+n+' 条课程数据');
+  return n;
+}
+(async function autoRestore(){
+  try{
+    if(store.all('course').length===0)await restoreCourseData(true);
+  }catch(e){}
+})();
+const origSet2=renderSettings;
+renderSettings=function(){
+  return origSet2()+`<details class="panel"><summary>数据恢复</summary><p class="meta">如果课程/章节不见了，点下面按钮重新拉取初始课程数据（不会删你已有的记录）。</p><button class="btn" id="restoreBtn">恢复课程数据</button></details>`;
+};
+document.addEventListener('click',async e=>{
+  if(e.target.id!=='restoreBtn')return;
+  e.preventDefault();
+  try{const n=await restoreCourseData(false);alert('已恢复 '+n+' 条')}catch(err){alert('恢复失败：'+err.message)}
+},true);
