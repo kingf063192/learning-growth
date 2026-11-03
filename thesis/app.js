@@ -91,7 +91,7 @@ function bindTask(){
   document.querySelectorAll('[data-close]').forEach(el=>el.onclick=()=>{openComments.delete(el.getAttribute('data-close'));render()});
   document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
     const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
-    if(f.size>20*1024*1024){toast('文件超过 20 MB');return}
+    if(f.size>10*1024*1024){toast('文件超过 10 MB');return}
     const name=authorName();
     const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
     try{
@@ -295,7 +295,7 @@ render = function(){
   document.querySelectorAll('[data-scmt]').forEach(el=>el.onclick=()=>{const id=el.getAttribute('data-scmt');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
   document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
     const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
-    if(f.size>20*1024*1024){toast('文件超过 20 MB');return}
+    if(f.size>10*1024*1024){toast('文件超过 10 MB');return}
     const name=authorName();
     const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
     try{
