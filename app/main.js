@@ -559,7 +559,7 @@ ensureDailyStudy();
 
 /* ===== 今日只放学习任务，不再重复课表里的课 ===== */
 renderToday = function(){
-  const isStudy=t=>t.category!=='固定课程';
+  const isStudy=t=>t.category!=='固定课程'&&t.courseId!=='g-thesis';
   const list=tasks().filter(t=>t.date===today()&&isStudy(t));
   const dn=list.filter(t=>t.done).length;
   const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
@@ -647,3 +647,64 @@ scheduleToday = async function(){
   render();try{await cloud.sync()}catch(e){}
 };
 (async()=>{try{await ensureDailyStudy()}catch(e){};try{await scheduleToday()}catch(e){}})();
+
+/* ===== 论文：按周固定，不参与挑选；截止可行性检查 ===== */
+function daysBetween(a,b){return Math.round((new Date(b+'T12:00')-new Date(a+'T12:00'))/86400000)}
+function feas(c){
+  const ts=tasks().filter(t=>t.courseId===c.id&&!t.done);
+  const left=Math.max(0,daysBetween(today(),c.deadline||today()));
+  const weeks=Math.max(1,Math.ceil(left/7));
+  const need=ts.length?Math.ceil(ts.length/weeks):0;
+  const st=need<=4?'ok':need<=7?'warn':'bad';
+  const txt=need<=4?'能完成':need<=7?'偏紧':'排不下';
+  return {left,weeks,need,st,txt};
+}
+
+renderToday = (function(prev){
+  return function(){
+    const thesis=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    const now=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done&&t.date&&t.date<=today())[0]||thesis[0];
+    const base=prev();
+    const blockHtml=thesis.length?`<div class="panel thesis-now"><span class="tag">论文 · 按周固定</span>
+      <h2 class="now-title" style="font-size:17px">${esc(now?now.title:'本周论文已完成')}</h2>
+      <p class="meta">${now?(now.date?'原定 '+esc(now.date)+' · ':'')+'这一步不参与挑选，按周推进；'+esc(now.duration||30)+' 分钟':''}</p>
+      ${now?`<button class="primary" data-focus="${esc(now.id)}">现在做</button>`:''}
+      </div>`:'';
+    return blockHtml+base;
+  };
+})(renderToday);
+
+ensureDailyStudy = (function(prev){
+  return async function(){
+    await prev();
+    const thesis=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done&&t.date&&t.date<=today());
+    for(const t of thesis){if(!t.start)await store.put({...t,date:today()})}
+  };
+})(ensureDailyStudy);
+
+scheduleToday = (function(prev){
+  return async function(){
+    const th=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done&&t.date===today()&&!t.start);
+    const free=freeWindows();
+    for(const t of th){
+      const dur=Number(t.duration)||30, start=takeSlot(free,dur,10);
+      if(start==null)break;
+      await store.put({...t,start:h2(start),end:h2(start+dur)});
+    }
+    await prev();
+  };
+})(scheduleToday);
+
+renderCourses = (function(prev){
+  return function(){
+    let html=prev();
+    const cs=store.all('course');
+    cs.forEach(c=>{
+      const f=feas(c);
+      const col=courseColor(c.id);
+      const badge=`<span class="feas ${f.st}" style="border-color:${col}">${f.txt}</span>`;
+      html=html.replace(`<div class="cc-head"><b>${esc(c.title)}</b>`, `<div class="cc-head"><b>${esc(c.title)}</b>${badge}`);
+    });
+    return html;
+  };
+})(renderCourses);
