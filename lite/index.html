@@ -169,11 +169,14 @@ function renderToday(){
     const late=x.date&&x.date<todayStr;
     return `<div class="row ${x.done?'done':''}"><input type="checkbox" data-tg="${x.id}" ${x.done?'checked':''}>
       <div class="rbody"><div class="t">${x.title}</div><div class="small">${x.date?(late?'已逾期 · ':'截止 ')+due:'今天'}</div></div>
-      ${x.hw?'':`<button class="x" data-split="${x.id}">×</button>`}</div>`;
+      ${x.hw?'':`<button class="x" data-split="${x.id}">×</button>`}<button class="x" data-del="${x.id}" title="删除">删</button></div>`;
   };
   l.innerHTML=(list.map(item).join('')||'<p class="meta">今天没有任务</p>')+(doneList.length?'<p class="small" style="margin:10px 0 4px">已完成</p>'+doneList.slice(-5).map(item).join(''):'');
   l.querySelectorAll('[data-tg]').forEach(b=>b.onchange=()=>{const t=S.tasks.find(x=>x.id===b.dataset.tg);t.done=b.checked;if(b.checked)S.bonus++;save();render()});
   l.querySelectorAll('[data-split]').forEach(b=>b.onclick=()=>split(b.dataset.split));
+  l.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+    if(confirm('删除这条任务？')){S.tasks=S.tasks.filter(x=>x.id!==b.dataset.del);save();render()}
+  });
   const sel=document.getElementById('nc');
   if(!sel.options.length)sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.n}</option>`).join('');
 }
