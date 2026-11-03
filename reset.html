@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>更新中…</title>
+<style>body{font-family:-apple-system,"PingFang SC",sans-serif;background:#fcf8fa;color:#392c35;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px}
+.box{max-width:320px}h1{font-size:18px;margin:0 0 8px}p{font-size:13.5px;color:#796b75;line-height:1.7}</style>
+</head><body><div class="box"><h1>正在清除旧缓存…</h1><p>清完会自动跳回首页。你的学习数据不受影响。</p></div>
+<script>
+(async function(){
+  try{
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      for(const r of regs) await r.unregister();
+    }
+    if(window.caches){const ks=await caches.keys();for(const k of ks) await caches.delete(k);}
+  }catch(e){}
+  setTimeout(function(){location.replace('./');},800);
+})();
+</script>
+</body></html>
