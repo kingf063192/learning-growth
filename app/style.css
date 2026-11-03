@@ -32,3 +32,6 @@ details.panel>summary+*{margin-top:10px}
 @media(max-width:560px){.reward-grid{grid-template-columns:repeat(2,1fr)}}
 
 .today-line{font-size:13.5px;color:var(--pink);font-weight:600;margin:0 0 8px}
+
+.x-btn{flex:none;width:30px;height:30px;min-height:30px;padding:0;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;align-self:flex-start;margin-top:1px}
+.x-btn:active{background:var(--soft);color:var(--pink)}
