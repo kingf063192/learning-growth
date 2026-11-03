@@ -963,7 +963,8 @@ function homeworkSpecs(){
         out.push({id:`hw:inorg:${mon}:${suf}`,courseId:'g-inorg',title:`无机化学 · ${name}（${mon.slice(5)}课后）`,date:addDays(mon,7),duration:dur});
       });
     }
-    if(wed>=t)out.push({id:`hw:cook:${wed}`,courseId:'g-cook',title:`烹饪化学 · 实训报告（${wed.slice(5)}课后）`,date:addDays(wed,7),duration:40});
+    const thu=addDays(mon,3);
+    if(wk<=12&&thu>=t)out.push({id:`hw:cai:${thu}`,courseId:'extra-3',title:`中国名菜 · 实训报告（${thu.slice(5)}课后）`,date:addDays(thu,7),duration:40});
     if(wk<=12&&wed>=t)out.push({id:`hw:inno:${wed}`,courseId:'extra-2',title:`创新创业 · 学习通作业（${wed.slice(5)}课后）`,date:addDays(wed,7),duration:30});
   }
   const orgStart=addDays(t,14), orgEnd='2027-01-08';
@@ -982,6 +983,7 @@ function homeworkSpecs(){
 async function ensureHomeworkRecords(){
   const t=today();
   const specs=homeworkSpecs();
+  for(const oldRec of store.all('task').filter(x=>x.id&&x.id.startsWith('hw:cook:'))){ if(!oldRec.done)await store.remove(oldRec.id); }
   for(const r of specs){
     if(r.date<t)continue;
     const old=store.get(r.id);
