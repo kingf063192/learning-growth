@@ -978,6 +978,7 @@ function homeworkSpecs(){
     if(wed>=t)out.push({id:`hw:lab:${wed}`,courseId:'extra-0',title:`无机与分析化学实验 · 实训报告（${wed.slice(5)}）`,date:addDays(wed,7),duration:50});
   }
   out.push({id:'hw:lit:1',courseId:'extra-1',title:'文献检索 · 开题报告',date:addDays(t,7),duration:60});
+  if('2026-11-06'>=t)out.push({id:'exam:md:2026-11-06',courseId:'extra-4',title:'中国名点 · 实操考试',date:'2026-11-06',duration:120});
   return out;
 }
 async function ensureHomeworkRecords(){
