@@ -77,6 +77,18 @@ function bindTask(){
   document.querySelectorAll('[data-cmt]').forEach(el=>el.onclick=()=>{const id=el.getAttribute('data-cmt');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
   document.querySelectorAll('[data-file]').forEach(el=>el.onclick=()=>{const id=el.getAttribute('data-file');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
   document.querySelectorAll('[data-close]').forEach(el=>el.onclick=()=>{openComments.delete(el.getAttribute('data-close'));render()});
+  document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
+    const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
+    if(f.size>20*1024*1024){toast('文件超过 20 MB');return}
+    const name=localStorage.getItem('thesis-name')||'匿名';
+    const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
+    try{
+      const r=await fetch(config.url+'/storage/v1/object/thesis-files/'+encodeURI(path),{method:'POST',headers:{apikey:config.key,Authorization:'Bearer '+config.key,'Content-Type':f.type||'application/octet-stream'},body:f});
+      if(!r.ok)throw Error('上传失败 '+(await r.text()).slice(0,120));
+      await rpc('thesis_file_add',{p_code:code,p_task_id:id,p_name:f.name,p_path:path,p_by:name});
+      toast('已上传');load();
+    }catch(e){toast(e.message)}
+  });
   document.querySelectorAll('[data-send]').forEach(el=>el.onclick=async()=>{
     const id=el.getAttribute('data-send');
     const name=document.querySelector(`[data-name="${id}"]`).value.trim()||'匿名';
@@ -152,18 +164,18 @@ window.addEventListener('hashchange',()=>{});
 
 /* ===== 阶段流程：双方确认才进入下一阶段 ===== */
 const STAGES=[
- {id:'s1',t:'选题确认',d:'确定研究对象、创新点与题目表述',items:['确定研究对象：黄晶果果浆/皮渣','写清创新点（新基质+首组数据）','拟 2–3 个题目备选','导师确认方向']},
- {id:'s2',t:'文献与引用',d:'核心文献清单 + 引用格式统一',items:['精读 10 篇核心文献','整理文献表（作者/年份/结论）','确定引用格式（学校/期刊）','导师确认文献清单']},
- {id:'s3',t:'方法与指标',d:'工艺参数、检测指标与方法确认',items:['确定工艺组合与水平','确定检测指标（分层/沉淀/持水力/黏度/粒径）','确定方法标准号','导师确认方案']},
- {id:'s4',t:'设备与材料',d:'设备可约、试剂耗材到位',items:['设备预约确认','试剂耗材采购清单','果实采购与贮存方案','导师确认开工条件']},
- {id:'s5',t:'开题报告',d:'初稿→导师修改→定稿提交',items:['初稿完成','导师批注回复','定稿提交学院','开题答辩通过']},
- {id:'s6',t:'预实验',d:'参数摸底与鲜/冻浆对比',items:['完成预实验','数据整理','导师看数据','确定正式方案']},
- {id:'s7',t:'正式实验',d:'3–4 轮重复 + 贮藏取样',items:['正式实验完成','取样与检测完成','原始数据归档','导师确认数据完整']},
- {id:'s8',t:'数据与统计',d:'统计、作图、结论',items:['ANOVA 与显著性','图表定稿','结论与讨论框架','导师确认']},
- {id:'s9',t:'本科论文',d:'按模板成稿、查重',items:['初稿','修改稿','查重通过','导师签字']},
- {id:'s10',t:'英文稿',d:'SCI 稿件与投稿材料',items:['Methods/Results','Intro/Discussion','润色','导师定稿']},
- {id:'s11',t:'投稿',d:'主投 JFMC；首投不晚于 2027-10-31',items:['选定期刊','Cover letter','完成投稿','导师知悉']},
- {id:'s12',t:'返修与接收',d:'回复审稿意见，拿到录用',items:['逐条回复','补实验（如需）','接收','录用证明']}
+ {id:'s1',t:'选题确认',d:'确定研究对象、创新点与题目表述',eta:'2 周',out:'选题说明（1 页）+ 3 个备选题目',acc:'导师在平台点“导师确认”，你点“我方确认”',items:['确定研究对象：黄晶果果浆/皮渣','写清创新点（新基质+首组数据）','拟 2–3 个题目备选','导师确认方向']},
+ {id:'s2',t:'文献与引用',d:'核心文献清单 + 引用格式统一',eta:'3 周',out:'文献表（10 篇）+ 引用格式规范',acc:'文献覆盖近 5 年 ≥60%，格式全文统一',items:['精读 10 篇核心文献','整理文献表（作者/年份/结论/可借鉴点）','确定引用格式（学校/期刊）','导师确认文献清单']},
+ {id:'s3',t:'方法与指标',d:'工艺参数、检测指标与方法确认',eta:'2 周',out:'技术路线图 + 指标方法表（含标准号）',acc:'每个指标都有方法、仪器、取样点',items:['确定工艺组合与水平','确定检测指标（分层/沉淀/持水力/黏度/粒径）','确定方法标准号','导师确认方案']},
+ {id:'s4',t:'设备与材料',d:'设备可约、试剂耗材到位',eta:'2 周',out:'设备清单 + 采购清单 + 排期表',acc:'关键设备已预约，试剂到货周期可控',items:['设备预约确认','试剂耗材采购清单','果实采购与贮存方案','导师确认开工条件']},
+ {id:'s5',t:'开题报告',d:'初稿→导师修改→定稿提交',eta:'4 周',out:'开题报告全文 + 汇报 PPT',acc:'导师完整读过 2 轮并同意提交',items:['初稿完成','导师批注回复','定稿提交学院','开题答辩通过']},
+ {id:'s6',t:'预实验',d:'参数摸底与鲜/冻浆对比',eta:'4 周',out:'预实验数据表 + 修正后的正式方案',acc:'关键参数范围确定，异常已排查',items:['完成预实验','数据整理','导师看数据','确定正式方案']},
+ {id:'s7',t:'正式实验',d:'3–4 轮重复 + 贮藏取样',eta:'8 周',out:'原始数据表（每轮每处理）',acc:'重复数够、缺失值有记录、可复现',items:['正式实验完成','取样与检测完成','原始数据归档','导师确认数据完整']},
+ {id:'s8',t:'数据与统计',d:'统计、作图、结论',eta:'3 周',out:'统计结果表 + 全套图',acc:'显著性标注正确、图能直接进论文',items:['ANOVA 与显著性','图表定稿','结论与讨论框架','导师确认']},
+ {id:'s9',t:'本科论文',d:'按模板成稿、查重',eta:'4 周',out:'本科论文定稿 + 查重报告',acc:'查重达标、导师签字',items:['初稿','修改稿','查重通过','导师签字']},
+ {id:'s10',t:'英文稿',d:'SCI 稿件与投稿材料',eta:'4 周',out:'英文稿 + Cover letter + Highlights',acc:'导师定稿、语言润色完成',items:['Methods/Results','Intro/Discussion','润色','导师定稿']},
+ {id:'s11',t:'投稿',d:'主投 JFMC；首投不晚于 2027-10-31',eta:'1 周',out:'投稿回执 + 稿号',acc:'系统显示 submitted',items:['选定期刊','Cover letter','完成投稿','导师知悉']},
+ {id:'s12',t:'返修与接收',d:'回复审稿意见，拿到录用',eta:'2–3 个月',out:'回复信 + 录用证明',acc:'收到 accept',items:['逐条回复','补实验（如需）','接收','录用证明']}
 ];
 function stageMap(){const m={};((data&&data.stages)||[]).forEach(s=>m[s.stage_id]=s);return m}
 function stageDone(sm,id){const s=sm[id];return !!(s&&s.owner_ok&&s.advisor_ok)}
@@ -204,16 +216,17 @@ render = function(){
     const badge=both?'<span class="sb done">已确认</span>':one?'<span class="sb wait">待对方确认</span>':lock?'<span class="sb lock">未解锁</span>':'<span class="sb now">进行中</span>';
     const scm=cm.filter(c=>c.task_id===st.id);
     return `<div class="stage ${cls}">
-      <div class="sh"><span class="idx">${i+1}</span><div class="st"><b>${esc(st.t)}</b><div class="meta">${esc(st.d)}</div></div>${badge}</div>
+      <div class="sh"><span class="idx">${i+1}</span><div class="st"><b>${esc(st.t)}</b><div class="meta">${esc(st.d)} · 预计 ${esc(st.eta||'')}</div></div>${badge}</div>
       ${lock?'<p class="meta">上一阶段双方确认后解锁。</p>':`
       <ul class="cl">${st.items.map((it,j)=>`<li><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${ck[j]?'checked':''}> ${esc(it)}</label></li>`).join('')}</ul>
+      <p class="meta">交付物：${esc(st.out||'')}<br>验收标准：${esc(st.acc||'')}</p>
       <div class="sf">
         <button class="${s.owner_ok?'primary':''}" data-sok="${st.id}:owner">${s.owner_ok?'✓ 我方已确认':'我方确认'}</button>
         <button class="${s.advisor_ok?'primary':''}" data-sok="${st.id}:advisor">${s.advisor_ok?'✓ 导师已确认':'导师确认'}</button>
         <button class="link" data-scmt="${st.id}">评语 (${scm.length})</button>
       </div>
       ${openComments.has(st.id)?`<div class="sub">${scm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有评语</p>'}
-        <div class="form"><input data-name="${st.id}" placeholder="你的名字" value="${esc(localStorage.getItem('thesis-name')||'')}"><textarea data-body="${st.id}" placeholder="对这一步的评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div></div>`:''}
+        <div class="form"><input data-name="${st.id}" placeholder="你的名字" value="${esc(localStorage.getItem('thesis-name')||'')}"><textarea data-body="${st.id}" placeholder="对这一步的评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div>${(data.files||[]).filter(f=>f.task_id===st.id).map(f=>`<p><a href="${config.url}/storage/v1/object/public/thesis-files/${encodeURI(f.path)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a></p>`).join('')}<label class="upload">上传文件<input type="file" data-sup="${st.id}" hidden></label></div>`:''}
       `}
     </div>`;
   }).join('')}
@@ -241,6 +254,18 @@ render = function(){
     }catch(e){toast(e.message)}
   });
   document.querySelectorAll('[data-scmt]').forEach(el=>el.onclick=()=>{const id=el.getAttribute('data-scmt');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
+  document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
+    const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
+    if(f.size>20*1024*1024){toast('文件超过 20 MB');return}
+    const name=localStorage.getItem('thesis-name')||'匿名';
+    const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
+    try{
+      const r=await fetch(config.url+'/storage/v1/object/thesis-files/'+encodeURI(path),{method:'POST',headers:{apikey:config.key,Authorization:'Bearer '+config.key,'Content-Type':f.type||'application/octet-stream'},body:f});
+      if(!r.ok)throw Error('上传失败 '+(await r.text()).slice(0,120));
+      await rpc('thesis_file_add',{p_code:code,p_task_id:id,p_name:f.name,p_path:path,p_by:name});
+      toast('已上传');load();
+    }catch(e){toast(e.message)}
+  });
   document.querySelectorAll('[data-send]').forEach(el=>el.onclick=async()=>{
     const id=el.getAttribute('data-send');
     const name=document.querySelector(`[data-name="${id}"]`).value.trim()||'匿名';
