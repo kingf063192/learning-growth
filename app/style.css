@@ -57,3 +57,25 @@ button.big{width:100%;min-height:52px;font-size:16.5px;border-radius:12px}
 .focus-card .clock{font-size:52px;font-weight:800;color:var(--pink);letter-spacing:2px;margin:6px 0 14px;font-variant-numeric:tabular-nums}
 .focus-actions{display:flex;flex-direction:column;gap:8px}
 .focus-actions button{min-height:46px;border-radius:11px}
+
+.course-list{display:grid;grid-template-columns:1fr;gap:10px}
+@media(min-width:760px){.course-list{grid-template-columns:1fr 1fr}}
+.course-card{margin:0}
+.cc-head{display:flex;justify-content:space-between;align-items:baseline;font-size:15px}
+.cc-pct{color:var(--pink);font-weight:800}
+.course-card .progress{margin:8px 0 6px}
+.course-card .meta{margin:0 0 8px}
+.week-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}
+.week-grid{display:grid;grid-template-columns:46px repeat(7,minmax(96px,1fr));min-width:760px;border-top:1px solid var(--line)}
+.wg-corner{border-right:1px solid var(--line)}
+.wg-head{text-align:center;font-size:12px;font-weight:600;padding:6px 2px;border-left:1px solid var(--line);color:var(--muted)}
+.wg-head.today{color:var(--pink)}
+.wg-head span{font-size:11px;font-weight:400}
+.wg-time{font-size:11px;color:var(--muted);text-align:right;padding:2px 4px;height:46px;border-top:1px solid var(--line);border-right:1px solid var(--line)}
+.wg-cell{min-height:46px;border-top:1px solid var(--line);border-left:1px solid var(--line);position:relative;padding:1px}
+.wg-cell.today{background:#fffafc}
+.wg-ev{display:block;width:100%;text-align:left;border-radius:6px;border:1px solid #e9d3e0;background:#fdf2f8;color:#7a2b52;padding:2px 4px;margin:1px 0;overflow:hidden;font-size:10.5px;line-height:1.25;min-height:0}
+.wg-ev b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wg-ev.fixed{background:#f3f0ff;border-color:#ddd3f5;color:#4f3d8a}
+.wg-ev.done{opacity:.55;text-decoration:line-through}
+.wg-ev.conflict{outline:2px solid #e8a3a3}
