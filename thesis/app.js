@@ -231,9 +231,10 @@ render = function(){
       <ul class="cl">${st.items.map((it,j)=>{
         const c=ck[j]||{};const done=typeof c==='boolean'?c:!!c.done;const txt=(c&&c.text)||it;const note=(c&&c.note)||'';
         const ed=openEdits.has(st.id+':'+j);
-        return `<li class="cli"><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${done?'checked':''}> <span class="${c&&c.text?'edited':''}">${esc(txt)}</span></label>${c&&c.text?'<span class="edtag">已改</span>':''}<button class="mini" data-ed="${st.id}:${j}">修改/批注</button>
+        const edited=!!(c&&c.text&&c.text!==it);
+        return `<li class="cli"><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${done?'checked':''}> ${edited?`<s class="orig">${esc(it)}</s> <span class="newtxt">${esc(c.text)}</span>`:`<span>${esc(it)}</span>`}</label>${edited?'<span class="edtag">已改</span>':''}<button class="mini" data-ed="${st.id}:${j}">修改/批注</button>
           ${note?`<div class="note">📝 ${esc(note)}</div>`:''}
-          ${ed?`<div class="editbox"><input data-et="${st.id}:${j}" value="${esc(txt)}" placeholder="修改这条内容（留空则用原文）"><textarea data-en="${st.id}:${j}" placeholder="批注：为什么改/有什么疑问">${esc(note)}</textarea><button class="primary" data-es="${st.id}:${j}">保存</button><button class="link" data-ec="${st.id}:${j}">取消</button></div>`:''}
+          ${ed?`<div class="editbox"><p class="meta" style="margin:0">原文：${esc(it)}</p><input data-et="${st.id}:${j}" value="${esc((c&&c.text)||'')}" placeholder="填写修改后的内容（留空则保留原文）"><textarea data-en="${st.id}:${j}" placeholder="批注：为什么改/有什么疑问">${esc(note)}</textarea><button class="primary" data-es="${st.id}:${j}">保存</button><button class="link" data-ec="${st.id}:${j}">取消</button></div>`:''}
         </li>`;
       }).join('')}</ul>
       <p class="meta">交付物：${esc(st.out||'')}<br>验收标准：${esc(st.acc||'')}</p>
