@@ -216,3 +216,38 @@ document.addEventListener('click',e=>{
   e.preventDefault();e.stopImmediatePropagation();
   splitTask(b.getAttribute('data-split'));
 },true);
+
+/* ===== 拆小：按章节指导拆成能立刻动手的小步 ===== */
+splitTask = async function(key){
+  const t=store.get(key);
+  if(!t){toast('找不到这条任务');return}
+  const total=Number(t.duration)||30;
+  const baseTitle=String(t.title||'任务').replace(/（\d+\/\d+）$/,'');
+  let steps=[];
+  try{
+    const g=taskGuide(course(t)||{title:baseTitle},chapter(t)||{title:baseTitle});
+    steps=(g.steps||[]).map(x=>String(x).trim()).filter(Boolean);
+  }catch(e){}
+  if(!steps.length)steps=['先看 5 分钟资料，知道这一步要做什么','动手做一遍，不求完美','核对一遍，把不懂的记下来'];
+  const parts=Math.min(steps.length, total>=60?3:2);
+  const per=Math.max(10,Math.round(total/parts/5)*5);
+  const rows=[];
+  for(let k=0;k<parts;k++){
+    const date=addDays(today(),k);
+    const rec={
+      id:k===0?t.id:(t.id+'-s'+k),
+      kind:'task', courseId:t.courseId, chapterId:t.chapterId,
+      title:baseTitle+'（'+(k+1)+'/'+parts+'）',
+      category:t.category||'待办',
+      duration:per, order:t.order,
+      date, start:k===0?(t.start||''):'', end:k===0?(t.end||''):'',
+      note:'这一步：'+steps[k],
+      done:false
+    };
+    rows.push(rec);
+  }
+  for(const r of rows)await store.put(r);
+  render();
+  try{await cloud.sync()}catch(e){}
+  toast('已拆成 '+parts+' 步，每天一步；每一步只要 '+per+' 分钟，点开能看到具体怎么做。');
+};
