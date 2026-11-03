@@ -5,7 +5,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const H=()=>({apikey:config.key,'Content-Type':'application/json'});
 let code=new URLSearchParams(location.search).get('code')||localStorage.getItem('thesis-code')||'';
 let data=null, session=JSON.parse(localStorage.getItem('thesis-session')||'null');
-let openComments=new Set(), filter='todo';
+let openComments=new Set(), openEdits=new Set(), filter='todo';
 
 async function rpc(name,body){const r=await fetch(config.url+'/rest/v1/rpc/'+name,{method:'POST',headers:H(),body:JSON.stringify(body||{})});const t=await r.text();let d=null;try{d=JSON.parse(t)}catch(e){d=t}if(!r.ok)throw Error((d&&(d.message||d.error))||t||r.status);return d}
 function toast(s){const t=$('#toast');t.textContent=s;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',4000)}
@@ -218,11 +218,18 @@ render = function(){
     return `<div class="stage ${cls}">
       <div class="sh"><span class="idx">${i+1}</span><div class="st"><b>${esc(st.t)}</b><div class="meta">${esc(st.d)} · 预计 ${esc(st.eta||'')}</div></div>${badge}</div>
       ${lock?'<p class="meta">上一阶段双方确认后解锁。</p>':`
-      <ul class="cl">${st.items.map((it,j)=>`<li><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${ck[j]?'checked':''}> ${esc(it)}</label></li>`).join('')}</ul>
+      <ul class="cl">${st.items.map((it,j)=>{
+        const c=ck[j]||{};const done=typeof c==='boolean'?c:!!c.done;const txt=(c&&c.text)||it;const note=(c&&c.note)||'';
+        const ed=openEdits.has(st.id+':'+j);
+        return `<li class="cli"><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${done?'checked':''}> <span class="${c&&c.text?'edited':''}">${esc(txt)}</span></label>${c&&c.text?'<span class="edtag">已改</span>':''}<button class="mini" data-ed="${st.id}:${j}">修改/批注</button>
+          ${note?`<div class="note">📝 ${esc(note)}</div>`:''}
+          ${ed?`<div class="editbox"><input data-et="${st.id}:${j}" value="${esc(txt)}" placeholder="修改这条内容（留空则用原文）"><textarea data-en="${st.id}:${j}" placeholder="批注：为什么改/有什么疑问">${esc(note)}</textarea><button class="primary" data-es="${st.id}:${j}">保存</button><button class="link" data-ec="${st.id}:${j}">取消</button></div>`:''}
+        </li>`;
+      }).join('')}</ul>
       <p class="meta">交付物：${esc(st.out||'')}<br>验收标准：${esc(st.acc||'')}</p>
       <div class="sf">
         <button class="${s.owner_ok?'primary':''}" data-sok="${st.id}:owner">${s.owner_ok?'✓ 我方已确认':'我方确认'}</button>
-        <button class="${s.advisor_ok?'primary':''}" data-sok="${st.id}:advisor">${s.advisor_ok?'✓ 导师已确认':'导师确认'}</button>
+        <button class="${s.advisor_ok?'primary':''}" data-sok="${st.id}:advisor">${s.advisor_ok?'✓ 对方已确认':'对方确认'}</button>
         <button class="link" data-scmt="${st.id}">评语 (${scm.length})</button>
       </div>
       ${openComments.has(st.id)?`<div class="sub">${scm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有评语</p>'}
@@ -242,8 +249,20 @@ render = function(){
   document.querySelectorAll('[data-st]').forEach(el=>el.onchange=async()=>{
     const sid=el.dataset.st, j=el.dataset.j;
     const cur2={...(checksOf(stageMap(),sid))};
-    cur2[j]=el.checked;
+    const old=cur2[j];const obj=typeof old==='object'&&old?{...old}:{};
+    obj.done=el.checked;cur2[j]=obj;
     try{await stageSet(sid,cur2,null,null)}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-ed]').forEach(el=>el.onclick=()=>{const k=el.getAttribute('data-ed');openEdits.has(k)?openEdits.delete(k):openEdits.add(k);render()});
+  document.querySelectorAll('[data-ec]').forEach(el=>el.onclick=()=>{openEdits.delete(el.getAttribute('data-ec'));render()});
+  document.querySelectorAll('[data-es]').forEach(el=>el.onclick=async()=>{
+    const k=el.getAttribute('data-es');const [sid,j]=k.split(':');
+    const txt=document.querySelector(`[data-et="${k}"]`).value.trim();
+    const note=document.querySelector(`[data-en="${k}"]`).value.trim();
+    const cur2={...(checksOf(stageMap(),sid))};
+    const old=cur2[j];const obj=typeof old==='object'&&old?{...old}:{done:!!old};
+    obj.text=txt;obj.note=note;cur2[j]=obj;
+    try{await stageSet(sid,cur2,null,null);openEdits.delete(k);toast('已保存')}catch(e){toast(e.message)}
   });
   document.querySelectorAll('[data-sok]').forEach(el=>el.onclick=async()=>{
     const [sid,who]=el.getAttribute('data-sok').split(':');
