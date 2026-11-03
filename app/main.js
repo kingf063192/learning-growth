@@ -2,18 +2,8 @@ import {today,addDays,monday,id,hash,defaults,plan,conflicts,minutes,clock,taskG
 import {Store} from './store.js';import {Cloud} from './cloud.js';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let store=await new Store('local').open(), cloud=new Cloud(store,s=>{$('#sync').textContent=s}),page='today',week=monday(today()),selected=today(),full=false,preview=null,lifeMonth=today().slice(0,7);
-const CONTENT_V='2026-11-03-a';
-const content=await (async()=>{
-  try{const c=JSON.parse(localStorage.getItem('content-cache')||'null');if(c&&c.v===CONTENT_V&&Array.isArray(c.data))return c.data}catch(e){}
-  const d=await fetch('./app/content.json').then(r=>r.json());
-  try{localStorage.setItem('content-cache',JSON.stringify({v:CONTENT_V,data:d}))}catch(e){}
-  return d;
-})();
-if(cloud.session){store.close();store=await new Store(cloud.session.user.id).open();cloud.store=store;} if(!store.all('course').length){await store.merge(content.filter(r=>['course','chapter','task','fixed'].includes(r.kind)));}
-const QUOTES=['今天不用很厉害，先开始就好。','慢一点没关系，别停。','你已经比昨天多走了一步。','把小事做完，信心就来了。','状态不好时，只做最小的一件。','允许自己休息，休息也是计划的一部分。','不用和别人比，和上周的自己比。','先完成，再完美。','每天一小步，一年就是一大步。','你不是懒，你只是累了。','做完就停，留点力气给明天。','记录本身就是一种进步。'];
-const KNOW=['细胞膜三大功能：分隔、控制物质进出、信息交流。','有氧呼吸三阶段：细胞质基质→线粒体基质→线粒体内膜。','酶的两个特点：高效性、专一性，且需要适宜温度与 pH。','蛋白质基本单位是氨基酸，靠肽键（—CO—NH—）连接。','DNA：脱氧核糖、双链、A/T/G/C；RNA：核糖、单链、A/U/G/C。','主动运输：需要载体、消耗 ATP、可逆浓度。','氨基酸通式：中心碳连 —NH₂、—COOH、—H、—R。','美拉德反应：糖和氨基酸加热产生褐色和香气（烤面包、煎肉）。','淀粉糊化：加热吸水膨胀变黏（勾芡、煮粥）。','锂盐期间多喝水，脱水会让血锂浓度升高。','每天固定时间称重，比每天称好几次更准。','复习时先合上书默想，比反复读有效。'];
-function dailyQuote(){const d=new Date();const seed=d.getFullYear()*372+(d.getMonth()+1)*31+d.getDate();return {q:QUOTES[seed%QUOTES.length],k:KNOW[(seed*7)%KNOW.length]}}
-function quoteCard(){const x=dailyQuote();return `<div class="panel quote-card"><p class="q">「${esc(x.q)}」</p><p class="meta">知识点 · ${esc(x.k)}</p></div>`}
+const content=await fetch('./app/content.json').then(r=>r.json());
+if(cloud.session){store.close();store=await new Store(cloud.session.user.id).open();cloud.store=store;}else if(!store.records.length)await store.merge(content);
 const settings=()=>({...defaults,...store.get('settings')?.value}),tasks=()=>store.all('task'),course=t=>store.get(t.courseId),chapter=t=>store.get(t.chapterId);
 function toast(s){$('#toast').textContent=s;$('#toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').style.display='none',5500)}
 function modal(title,html){$('#modalTitle').textContent=title;$('#modalBody').innerHTML=html;if(!$('#modal').open)$('#modal').showModal()}
@@ -26,7 +16,7 @@ function row(t){const c=course(t),ch=chapter(t);return `<div class="row ${t.done
 function progress(list){return list.length?Math.round(list.filter(t=>t.done).length/list.length*100):0}
 async function loadVisible(){if(page!=='life'||!cloud.session)return;try{await cloud.details(store.all('bill').filter(r=>r.date?.startsWith(lifeMonth)).map(r=>r.id));if(page==='life')render();}catch(e){toast(e.message)}}
 function render(){const pages={today:['☀','今日'],week:['▦','行程'],courses:['▤','学习'],review:['◇','复习'],life:['♡','生活'],rewards:['✧','奖励'],settings:['⚙','设置']};$('#nav').innerHTML=Object.entries(pages).map(([key,[icon,title]])=>`<button class="${page===key?'active':''}" data-page="${key}"><span>${icon}</span> ${title}</button>`).join('');$('#date').textContent=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});$('#heading').textContent=pages[page][1];$('#sync').textContent=cloud.status;$('#main').innerHTML=({today:renderToday,week:renderWeek,courses:renderCourses,review:renderReview,life:renderLife,rewards:renderRewards,settings:renderSettings})[page]();}
-function renderToday(){const list=tasks().filter(t=>t.date===today()),done=list.filter(t=>t.done).length,research=tasks().filter(t=>t.category==='科研'&&t.date>=monday(today())&&t.date<=addDays(monday(today()),6)),rec=list.filter(t=>!t.done&&t.category!=='固定课程').sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'))[0];const overdue=tasks().filter(t=>!t.done&&t.date&&t.date<today());return `${!settings().confirmed?`<div class="notice"><b>先确认日期与目标</b><p>原计划以 2026 年秋季为起点。确认学期、截止日和可用时间后再安排；目前不会自动沿用过期计划。</p>${action('开始确认','onboard','','primary')}</div>`:''}<div class="panel hero"><div><span class="eyebrow">TODAY / 把一小步学明白</span><h2>${rec?'今天先做这一项':'今天，从自己的节奏开始'}</h2><p>${rec?esc(rec.title):'确认目标，选一个知识点，给自己 30 分钟。'}</p>${rec?action('开始学习 →','detail',rec.id,'primary'):action('查看章节','courses','','primary')}</div><div class="flower" aria-hidden="true">✿</div></div>${quoteCard()}<div class="stats"><div class="stat"><small>今日完成率</small><strong>${list.length?Math.round(done/list.length*100):0}%</strong></div><div class="stat"><small>已完成 / 今日任务</small><strong>${done} / ${list.length}</strong></div><div class="stat"><small>可用积分</small><strong>${store.balance()}</strong></div></div><div class="grid"><div><div class="panel"><div class="toolbar"><h2>今日安排</h2>${action('＋ 添加任务','newTask')}</div><p class="meta">所有页面引用同一条任务；喝水、运动单独记录，不计入完成率。</p>${list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start)).map(row).join('')||empty('没有已定时任务')}<h3>时间待定</h3>${list.filter(t=>!t.start).map(row).join('')||empty('没有待定任务')}</div>${overdue.length?`<div class="panel"><h2>未完成的历史安排 · ${overdue.length}</h2><p>历史保留。可单项延期，或选择未完成任务加入重排。</p>${overdue.slice(0,10).map(row).join('')}</div>`:''}<div class="panel"><h2>每日结算</h2><p>${done} / ${list.length} 项完成；今日首次完成奖励 ${store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0)} 分。</p><p class="meta">每条任务首次完成 +10 分；取消不扣分，重做不再发分。结算不另发奖励。</p>${action(store.get('settle:'+today())?'已结算 · 查看最新汇总':'确认今日结算','settle')}</div></div><div><div class="panel"><h2>本周科研</h2><p>目标：${esc(store.get('research-week:'+monday(today()))?.goal||'梳理本周最重要的研究问题，形成可供导师审核的材料。')}</p><div class="progress"><i style="width:${progress(research)}%"></i></div><p class="meta">${research.filter(t=>t.done).length} / ${research.length} 个具体步骤完成</p>${research.map(t=>`<div class="meta">${t.done?'✓':'○'} ${esc(t.title)} · ${esc(t.date)}</div>`).join('')||empty('尚未排入科研步骤，请在学习页预览排期。')}${action('修改本周目标','research')}</div>${habitCard()}</div></div>`}
+function renderToday(){const list=tasks().filter(t=>t.date===today()),done=list.filter(t=>t.done).length,research=tasks().filter(t=>t.category==='科研'&&t.date>=monday(today())&&t.date<=addDays(monday(today()),6)),rec=list.filter(t=>!t.done&&t.category!=='固定课程').sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'))[0];const overdue=tasks().filter(t=>!t.done&&t.date&&t.date<today());return `${!settings().confirmed?`<div class="notice"><b>先确认日期与目标</b><p>原计划以 2026 年秋季为起点。确认学期、截止日和可用时间后再安排；目前不会自动沿用过期计划。</p>${action('开始确认','onboard','','primary')}</div>`:''}<div class="panel hero"><div><span class="eyebrow">TODAY / 把一小步学明白</span><h2>${rec?'今天先做这一项':'今天，从自己的节奏开始'}</h2><p>${rec?esc(rec.title):'确认目标，选一个知识点，给自己 30 分钟。'}</p>${rec?action('开始学习 →','detail',rec.id,'primary'):action('查看章节','courses','','primary')}</div><div class="flower" aria-hidden="true">✿</div></div><div class="stats"><div class="stat"><small>今日完成率</small><strong>${list.length?Math.round(done/list.length*100):0}%</strong></div><div class="stat"><small>已完成 / 今日任务</small><strong>${done} / ${list.length}</strong></div><div class="stat"><small>可用积分</small><strong>${store.balance()}</strong></div></div><div class="grid"><div><div class="panel"><div class="toolbar"><h2>今日安排</h2>${action('＋ 添加任务','newTask')}</div><p class="meta">所有页面引用同一条任务；喝水、运动单独记录，不计入完成率。</p>${list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start)).map(row).join('')||empty('没有已定时任务')}<h3>时间待定</h3>${list.filter(t=>!t.start).map(row).join('')||empty('没有待定任务')}</div>${overdue.length?`<div class="panel"><h2>未完成的历史安排 · ${overdue.length}</h2><p>历史保留。可单项延期，或选择未完成任务加入重排。</p>${overdue.slice(0,10).map(row).join('')}</div>`:''}<div class="panel"><h2>每日结算</h2><p>${done} / ${list.length} 项完成；今日首次完成奖励 ${store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0)} 分。</p><p class="meta">每条任务首次完成 +10 分；取消不扣分，重做不再发分。结算不另发奖励。</p>${action(store.get('settle:'+today())?'已结算 · 查看最新汇总':'确认今日结算','settle')}</div></div><div><div class="panel"><h2>本周科研</h2><p>目标：${esc(store.get('research-week:'+monday(today()))?.goal||'梳理本周最重要的研究问题，形成可供导师审核的材料。')}</p><div class="progress"><i style="width:${progress(research)}%"></i></div><p class="meta">${research.filter(t=>t.done).length} / ${research.length} 个具体步骤完成</p>${research.map(t=>`<div class="meta">${t.done?'✓':'○'} ${esc(t.title)} · ${esc(t.date)}</div>`).join('')||empty('尚未排入科研步骤，请在学习页预览排期。')}${action('修改本周目标','research')}</div>${habitCard()}</div></div>`}
 function habitCard(){const w=store.get('water:'+today())?.value||0,ex=store.get('exercise:'+today());return `<div class="panel"><h2>照顾自己</h2><p>喝水记录 · ${w} 杯（每杯约 250 ml）</p><div class="water">${Array.from({length:8},(_,i)=>action('◉ '+(i+1),'water',String(i+1),w===i+1?'active':'')).join('')}${action('清零','water','0')}</div><p class="meta">按个人需要记录，不自动制定饮水目标。</p>${action(ex?.done?'✓ 今日运动已记录':'记录今日运动','exercise')}<p class="meta">选择适合自己的活动，具体训练遵循教练指导。</p></div>`}
 function eventStyle(t,list){const group=[t],items=list.filter(x=>x.date===t.date&&x.start);for(let i=0;i<group.length;i++)for(const x of items)if(!group.some(y=>y.id===x.id)&&x.start<group[i].end&&group[i].start<x.end)group.push(x);if(group.length===1)return '';group.sort((a,b)=>a.start.localeCompare(b.start)||a.id.localeCompare(b.id));const ends=[],lanes={};for(const x of group){let lane=ends.findIndex(e=>e<=x.start);if(lane<0)lane=ends.length;ends[lane]=x.end;lanes[x.id]=lane;}return 'left:'+lanes[t.id]*100/ends.length+'%;width:'+100/ends.length+'%';}
 function renderWeek(){const dates=Array.from({length:7},(_,i)=>addDays(week,i)),list=tasks().filter(t=>dates.includes(t.date)),bad=new Set(conflicts(list));return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}<b>${week} — ${addDays(week,6)}</b>${action(full?'查看当天':'查看整周','fullWeek')}${action('＋ 任务','newTask')}</div><p class="meta">固定课程优先 · 虚线边框 / “⚠ 冲突”表示重叠，点击调整。推定时间保留原时段标签。</p><div class="mobile-dates">${dates.map((d,i)=>action(['一','二','三','四','五','六','日'][i]+'<br>'+d.slice(5),'selectDay',d,selected===d?'active':'')).join('')}</div><div class="week-scroll"><div class="week ${full?'full':''}"><div></div>${dates.map((d,i)=>`<div class="dayhead ${d===today()?'today':''} ${d!==selected?'not-selected':''}">${['周一','周二','周三','周四','周五','周六','周日'][i]}<br>${d.slice(5)} ${d===today()?'· 今天':''}</div>`).join('')}<div class="times">${Array.from({length:17},(_,i)=>`<span style="top:${i*120}px">${String(i+7).padStart(2,'0')}:00</span>`).join('')}</div>${dates.map(d=>`<div class="daycol ${d!==selected?'not-selected':''}">${list.filter(t=>t.date===d&&t.start).map(t=>`<button class="event ${t.category==='固定课程'?'fixed':''} ${t.done?'done':''} ${bad.has(t.id)?'conflict':''}" style="top:${(minutes(t.start)-420)*2}px;height:${Math.max(40,(minutes(t.end)-minutes(t.start))*2)}px;${eventStyle(t,list)}" data-action="detail" data-id="${esc(t.id)}"><b>${esc(t.title)}</b><br>${esc(t.start+'–'+t.end)} · ${esc(t.category)}<br>${bad.has(t.id)?'⚠ 冲突 ':''}${t.done?'✓ 已完成':'○ 未完成'} ${t.inferred?'· 推定':''}</button>`).join('')}</div>`).join('')}</div></div></div><div class="panel"><h2>待安排 · 没有具体时间</h2>${list.filter(t=>!t.start).map(row).join('')||empty()}</div>`}
@@ -117,114 +107,3 @@ $('#close').onclick=close;$('#sync').onclick=()=>handle('sync');window.addEventL
 window.addEventListener('hashchange',()=>{const p=location.hash.slice(1);if(['today','week','courses','review','life','rewards','settings'].includes(p)){page=p;render()}});
 page=['today','week','courses','review','life','rewards','settings'].includes(location.hash.slice(1))?location.hash.slice(1):'today';render();await cloud.sync();if(settings().confirmed)await fixedWeek(7,today());for(const c of store.all('card').filter(c=>!c.archived&&c.next<=today()))await store.merge([{id:'review:'+c.id+':'+c.next,kind:'task',cardId:c.id,chapterId:c.chapterId,courseId:store.get(c.chapterId)?.courseId,title:'复习：'+c.front,date:today(),category:'复习',duration:20,done:false}]);render();await cloud.sync();await loadVisible();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').then(r=>{r.update();r.addEventListener('updatefound',()=>{r.installing?.addEventListener('statechange',()=>{if(r.waiting)toast('新版本已就绪，关闭此应用后重新打开即可更新')})})}).catch(e=>toast('离线缓存未启用：'+e.message));
-
-/* ===== 统一逻辑（唯一一份） ===== */
-const STUDY_OK=['g-eng','g-biochem','g-cell','g-politics','g-inorg','g-org','g-food','g-report','g-extra'];
-const HW_IDS=['g-report','g-online'];
-const TERM_START='2026-09-07';
-const isHW=t=>HW_IDS.includes(t.courseId)||/作业|报告|实训|网课|实验报告/.test(t.title||'');
-function semWeek(d){return Math.floor((new Date(d+'T12:00')-new Date(TERM_START+'T12:00'))/604800000)+1}
-
-/* 未开课的课：extra 系列按学期周判断 */
-const EXTRA_START={'extra-0':14,'extra-1':1,'extra-2':1,'extra-3':1,'extra-4':1,'extra-5':1,'extra-6':13,'g-online':1};
-function started(cid){const st=EXTRA_START[cid];return st==null?true:semWeek(today())>=st}
-
-/* 作业规则：生成带截止日期的任务 */
-function hwSpecs(){
-  const t=today(),out=[];
-  for(let wk=1;wk<=16;wk++){
-    const mon=addDays(TERM_START,(wk-1)*7),tue=addDays(mon,1),thu=addDays(mon,3),wed=addDays(mon,2);
-    if(mon>=t){[['note','课堂笔记',25],['hw','手写作业',35],['mind','思维导图',20]].forEach(([s2,n2,d2])=>{
-      out.push({id:`hw:inorg:${mon}:${s2}`,courseId:'g-inorg',title:`无机化学 · ${n2}（${mon.slice(5)}）`,date:addDays(mon,7),duration:d2})})}
-    if(wk<=12&&thu>=t)out.push({id:`hw:cai:${thu}`,courseId:'extra-3',title:`中国名菜 · 实训报告（${thu.slice(5)}）`,date:addDays(thu,7),duration:40});
-    if(wk<=12&&wed>=t)out.push({id:`hw:inno:${wed}`,courseId:'extra-2',title:`创新创业 · 学习通作业（${wed.slice(5)}）`,date:addDays(wed,7),duration:30});
-    if(wk>=14&&wed>=t)out.push({id:`hw:lab:${wed}`,courseId:'extra-0',title:`无机实验 · 实训报告（${wed.slice(5)}）`,date:addDays(wed,7),duration:50});
-  }
-  const s0=addDays(t,14),e0='2027-01-08';
-  const span=Math.max(1,Math.round((new Date(e0+'T12:00')-new Date(s0+'T12:00'))/86400000));
-  for(let i=0;i<5;i++)out.push({id:`hw:org:${i+1}`,courseId:'g-org',title:`有机化学 · 第 ${i+1} 次书面作业`,date:addDays(s0,Math.round(span*i/4)),duration:45});
-  out.push({id:'hw:lit:1',courseId:'extra-1',title:'文献检索 · 开题报告',date:addDays(t,14),duration:60});
-  if('2026-11-06'>=t)out.push({id:'exam:md',courseId:'extra-4',title:'中国名点 · 结业考试',date:'2026-11-06',duration:120});
-  return out;
-}
-async function ensureHW(){
-  for(const r of hwSpecs()){
-    if(store.get(r.id))continue;
-    await store.put({...r,kind:'task',category:'课程',done:false,start:'',end:''});
-  }
-}
-
-/* 每日：从学习计划挑任务（期末专业课优先、难的先排） */
-const PRIO={'g-org':1,'g-inorg':2,'g-food':3,'g-eng':4,'g-biochem':5,'g-cell':6,'g-politics':7};
-async function ensureToday(){
-  const t=today();
-  const same=tasks().filter(x=>x.date===t&&x.category!=='固定课程'&&x.courseId!=='g-thesis');
-  if(same.length>=4)return;
-  const cands=tasks().filter(x=>x.category!=='固定课程'&&x.courseId!=='g-thesis'&&!x.done&&(!x.date||x.date>t)&&!isHW(x)&&STUDY_OK.includes(x.courseId)&&started(x.courseId));
-  cands.sort((a,b)=>(PRIO[a.courseId]||9)-(PRIO[b.courseId]||9));
-  for(const x of cands.slice(0,4-same.length))await store.put({...x,date:t,start:'',end:''});
-}
-
-/* 今日页：只显示今天的学习任务 */
-renderToday=function(){
-  const list=tasks().filter(x=>x.date===today()&&x.category!=='固定课程'&&x.courseId!=='g-thesis');
-  const done=list.filter(x=>x.done).length;
-  const next=list.filter(x=>!x.done)[0];
-  return `<div class="panel"><h2>今天要做</h2>
-    <p class="meta">${done}/${list.length} 已完成 · 只显示学习任务，课表在“行程”里</p>
-    ${next?`<p style="font-size:17px;font-weight:600;margin:8px 0">现在做：${esc(next.title)}</p>`:''}
-    ${list.map(x=>`<div class="row"><input type="checkbox" data-task="${esc(x.id)}" ${x.done?'checked':''}><div class="body"><button class="title" data-action="detail" data-id="${esc(x.id)}">${esc(x.title)}</button><div class="meta">${esc((store.get(x.courseId)||{}).title||'')} · ${x.start||'今天随时'}</div></div></div>`).join('')||'<p class="meta">今天没有学习任务</p>'}
-    </div>`;
-};
-
-/* 学习页：只显示在上的课 */
-const origCourses=renderCourses;
-renderCourses=function(){
-  // 先渲染，再把未开课的 extra 课程隐藏
-  let html=origCourses();
-  for(const cid in EXTRA_START){
-    if(started(cid))continue;
-    const c=store.get(cid);if(!c)continue;
-    const t=esc(c.title||'');
-    html=html.split(`<h2>${t}</h2>`).join(`<h2 style="display:none">${t}</h2>`);
-  }
-  return html;
-};
-
-/* 启动：补作业、补今日 */
-(async()=>{try{await ensureHW()}catch(e){};try{await ensureToday()}catch(e){};try{render()}catch(e){}})();
-
-/* ===== 作业管理：增删 ===== */
-const COURSE_OPTS=[['g-inorg','无机化学'],['g-org','有机化学'],['g-food','食品工艺学'],['extra-3','中国名菜'],['extra-4','中国名点'],['extra-0','无机实验'],['extra-1','文献检索'],['extra-2','创新创业'],['g-online','学习通网课']];
-function hwPanel(){
-  const list=tasks().filter(x=>isHW(x)&&!x.done).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,20);
-  return `<details class="panel"><summary>作业管理</summary>
-    <div class="kcal">添加：选课程、写标题、选截止日。删除后不可恢复。</div>
-    <div class="add" style="margin-top:8px">
-      <select id="hwCourse" style="width:120px">${COURSE_OPTS.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select>
-      <input type="text" id="hwTitle" placeholder="作业标题">
-      <input type="date" id="hwDate">
-      <input type="number" id="hwDur" value="30" style="width:70px" placeholder="分钟">
-      <input type="submit" id="hwAdd" value="添加">
-    </div>
-    ${list.map(x=>`<div class="row"><div class="body"><b>${esc(x.title)}</b><div class="meta">${esc((store.get(x.courseId)||{}).title||'')} · 截止 ${esc(x.date||'未定')}</div></div><button class="btn" data-hwdel="${esc(x.id)}">删除</button></div>`).join('')||'<p class="meta">没有未完成的作业</p>'}
-    </details>`;
-}
-const origSet=renderSettings;
-renderSettings=function(){return origSet()+hwPanel()};
-document.addEventListener('click',async e=>{
-  if(e.target.id!=='hwAdd')return;
-  const cid=document.getElementById('hwCourse').value;
-  const t=document.getElementById('hwTitle').value.trim();
-  const d=document.getElementById('hwDate').value;
-  const dur=Number(document.getElementById('hwDur').value)||30;
-  if(!t||!d){alert('写标题、选截止日');return}
-  await store.put({id:'hw:manual:'+Date.now(),kind:'task',courseId:cid,title:t,date:d,duration:dur,category:'课程',done:false,start:'',end:''});
-  render();try{await cloud.sync()}catch(err){}
-},true);
-document.addEventListener('click',async e=>{
-  const b=e.target.closest&&e.target.closest('[data-hwdel]');
-  if(!b)return;e.preventDefault();e.stopImmediatePropagation();
-  if(!confirm('删除这条作业？'))return;
-  await store.remove(b.getAttribute('data-hwdel'));render();try{await cloud.sync()}catch(err){}
-},true);
