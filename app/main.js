@@ -560,7 +560,7 @@ ensureDailyStudy();
 /* ===== 今日只放学习任务，不再重复课表里的课 ===== */
 renderToday = function(){
   const isStudy=t=>t.category!=='固定课程'&&t.courseId!=='g-thesis';
-  const list=tasks().filter(t=>t.date===today()&&isStudy(t));
+  const list=tasks().filter(t=>t.date===today()&&isStudy(t)&&(STUDY_OK.includes(t.courseId)||isHomework(t)));
   const dn=list.filter(t=>t.done).length;
   const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
   const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
@@ -878,7 +878,7 @@ ensureDailyStudy = async function(){
 
 renderToday = function(){
   const isStudy=t=>t.category!=='固定课程'&&t.courseId!=='g-thesis';
-  const list=tasks().filter(t=>t.date===today()&&isStudy(t));
+  const list=tasks().filter(t=>t.date===today()&&isStudy(t)&&(STUDY_OK.includes(t.courseId)||isHomework(t)));
   const dn=list.filter(t=>t.done).length;
   const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
   const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
@@ -971,6 +971,10 @@ function homeworkSpecs(){
   for(let i=0;i<5;i++){
     const due=addDays(orgStart,Math.round(orgSpan*i/4));
     out.push({id:`hw:org:${i+1}`,courseId:'g-org',title:`有机化学 · 第 ${i+1} 次书面作业`,date:due,duration:45});
+  }
+  for(let wk=14;wk<=17;wk++){
+    const mon=addDays(TERM_START,(wk-1)*7), wed=addDays(mon,2);
+    if(wed>=t)out.push({id:`hw:lab:${wed}`,courseId:'extra-0',title:`无机与分析化学实验 · 实训报告（${wed.slice(5)}）`,date:addDays(wed,7),duration:50});
   }
   out.push({id:'hw:lit:1',courseId:'extra-1',title:'文献检索 · 开题报告',date:addDays(t,7),duration:60});
   return out;
