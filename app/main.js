@@ -721,11 +721,11 @@ const CAT_COLORS={
 const EXAM_IDS=['g-eng','g-biochem','g-cell','g-politics'];
 function colorOf(t){
   if(t.courseId==='g-thesis')return CAT_COLORS.thesis;
-  if(t.fixedLike)return CAT_COLORS.class;
-  if(EXAM_IDS.includes(t.courseId))return CAT_COLORS.exam;
-  if(t.category==='课程')return CAT_COLORS.course;
-  if(t.category==='兴趣')return CAT_COLORS.interest;
+  if(t.fixedLike||t.category==='固定课程')return CAT_COLORS.class;
   if(t.category==='生活')return CAT_COLORS.life;
+  if(t.category==='兴趣')return CAT_COLORS.interest;
+  if(EXAM_IDS.includes(t.courseId))return CAT_COLORS.exam;
+  if(t.courseId){const c=courseColor(t.courseId);return {bg:c+'1f',bd:c+'66',tx:c}}
   return CAT_COLORS.course;
 }
 function semWeekOf(d){const s=settings().semester||'2026-09-07';return Math.floor((new Date(d+'T12:00')-new Date(s+'T12:00'))/604800000)+1}
