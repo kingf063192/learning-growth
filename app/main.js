@@ -319,3 +319,79 @@ document.addEventListener('click',async e=>{
     }catch(err){toast('JSON 格式不对：'+err.message)}
   }
 },true);
+
+/* ===== ADHD 友好：一次只做一件 + 2 分钟起步 + 温和反馈 ===== */
+let showAllToday=false, fTask=null, fLeft=0, fTimer=null;
+
+function focusBox(){return document.getElementById('focusbox')}
+
+function todayRow(t){
+  const h=row(t), i=h.lastIndexOf('</div>');
+  const extra=`<button class="mini-btn" data-focus="${esc(t.id)}">2 分钟</button><button class="x-btn" data-split="${esc(t.id)}" title="不想做/没做完：拆小">×</button>`;
+  return i<0?h:h.slice(0,i)+extra+h.slice(i);
+}
+
+function pickNext(){
+  const list=tasks().filter(t=>t.date===today()&&!t.done).sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'));
+  return list[0]||null;
+}
+
+function startFocus(id,secs){
+  const t=store.get(id); if(!t)return;
+  fTask=t; fLeft=secs; renderFocus();
+  clearInterval(fTimer);
+  fTimer=setInterval(()=>{fLeft--;renderFocus();if(fLeft<=0){clearInterval(fTimer);fLeft=0;renderFocus()}},1000);
+}
+
+function stopFocus(){clearInterval(fTimer);fTask=null;fLeft=0;const b=focusBox();if(b)b.remove()}
+
+function renderFocus(){
+  let b=focusBox();
+  if(!b){document.body.insertAdjacentHTML('beforeend','<div id="focusbox" class="focusbox"></div>');b=focusBox()}
+  if(!fTask){b.remove();return}
+  const m=String(Math.floor(fLeft/60)).padStart(2,'0'),sec=String(fLeft%60).padStart(2,'0');
+  b.innerHTML=`<div class="focus-card"><p class="meta">现在只做这一件</p><h3>${esc(fTask.title)}</h3><div class="clock">${m}:${sec}</div>
+  <div class="focus-actions"><button class="primary" data-fdone="${esc(fTask.id)}">做完了</button><button data-fmore="${esc(fTask.id)}">再来 10 分钟</button><button data-fclose="1">先到这</button></div>
+  <p class="meta">时间到就停，不用愧疚；做 2 分钟也算开始。</p></div>`;
+}
+
+renderToday = function(){
+  const list=tasks().filter(t=>t.date===today());
+  const dn=list.filter(t=>t.done).length;
+  const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
+  const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
+  const untimed=list.filter(t=>!t.start);
+  const all=tasks().filter(t=>t.date===today());
+  const next=pickNext();
+  const overdue=tasks().filter(t=>!t.done&&t.date&&t.date<today());
+  const shownAll=showAllToday?list:list.slice(0,3);
+  const hidden=Math.max(0,list.length-3);
+  const allDone=dn===list.length&&list.length>0;
+  return `<div class="panel focus-now">
+    <p class="meta">现在做</p>
+    <h2 class="now-title">${allDone?'今天做完了，去休息 🎉':(next?esc(next.title):'今天没有安排')}</h2>
+    ${next?`<button class="primary big" data-focus="${esc(next.id)}">开始 2 分钟</button>`:''}
+    <p class="today-line">${allDone?'':'已完成 '+dn+' / '+list.length} · 今日 +${award} 分 · 连续 ${streakDays()} 天</p>
+  </div>
+  <div class="panel"><div class="toolbar"><h2>今天要做</h2>${action('＋ 任务','newTask')}</div>
+  ${shownAll.map(todayRow).join('')||empty('今天没有任务')}
+  ${hidden>0&&!showAllToday?`<button class="link-btn" id="showAll">还有 ${hidden} 件，全部展开</button>`:''}
+  </div>
+  ${overdue.length?`<details class="panel"><summary>前几天没做完（${overdue.length}）</summary><p class="meta">不着急：点 × 把它拆小，或直接勾掉。</p>${overdue.slice(0,8).map(todayRow).join('')}</details>`:''}`;
+};
+
+document.addEventListener('click',async e=>{
+  const t=e.target;
+  if(t.id==='showAll'){showAllToday=true;render();return}
+  const f=t.closest&&t.closest('[data-focus]');
+  if(f){e.preventDefault();e.stopImmediatePropagation();startFocus(f.getAttribute('data-focus'),120);return}
+  const done=t.closest&&t.closest('[data-fdone]');
+  if(done){e.preventDefault();e.stopImmediatePropagation();
+    await store.complete(done.getAttribute('data-fdone'),true);
+    stopFocus();render();try{await cloud.sync()}catch(err){}
+    toast('完成一件事。这是今天的第 '+(store.all('award').filter(a=>a.date===today()).length)+' 次打勾。');return}
+  const more=t.closest&&t.closest('[data-fmore]');
+  if(more){e.preventDefault();e.stopImmediatePropagation();startFocus(more.getAttribute('data-fmore'),600);return}
+  const cl=t.closest&&t.closest('[data-fclose]');
+  if(cl){e.preventDefault();stopFocus();return}
+},true);
