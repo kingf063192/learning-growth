@@ -112,7 +112,7 @@ window.addEventListener('hashchange',()=>{const p=location.hash.slice(1);if(['to
 page=['today','week','courses','review','life','rewards','settings'].includes(location.hash.slice(1))?location.hash.slice(1):'today';render();await cloud.sync();if(settings().confirmed)await fixedWeek(7,today());for(const c of store.all('card').filter(c=>!c.archived&&c.next<=today()))await store.merge([{id:'review:'+c.id+':'+c.next,kind:'task',cardId:c.id,chapterId:c.chapterId,courseId:store.get(c.chapterId)?.courseId,title:'复习：'+c.front,date:today(),category:'复习',duration:20,done:false}]);render();await cloud.sync();await loadVisible();
 if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').then(r=>{r.update();r.addEventListener('updatefound',()=>{r.installing?.addEventListener('statechange',()=>{if(r.waiting)toast('新版本已就绪，关闭此应用后重新打开即可更新')})})}).catch(e=>toast('离线缓存未启用：'+e.message));
 
-/* ===== 进度优先改版（赋值覆盖） ===== */
+/* ===== 简化版：今日只放今日安排；进度在“学习”；喝水/运动/食谱在“生活” ===== */
 const RECIPES=[
  ['鸡蛋+豆浆+全麦面包','米饭半碗+鸡胸100g+两份菜','红薯+豆腐+蔬菜'],
  ['燕麦牛奶+香蕉','杂粮饭+番茄炒蛋+青菜','玉米+清蒸鱼+西兰花'],
@@ -122,32 +122,39 @@ const RECIPES=[
  ['鸡蛋饼+豆浆','杂粮饭+清蒸鱼+蔬菜','玉米+瘦肉+菌菇'],
  ['牛奶+燕麦+坚果少量','米饭半碗+豆腐+青菜','红薯+鸡蛋+番茄汤']
 ];
-function recipeCard(){const d=new Date().getDay(),r=RECIPES[(d+6)%7];return `<div class="panel"><h2>今日推荐食谱</h2><p class="meta">约 1200–1400 kcal，便宜好做；按口味换同类食材。</p><p><b>早餐</b> ${esc(r[0])}</p><p><b>午餐</b> ${esc(r[1])}</p><p><b>晚餐</b> ${esc(r[2])}</p><p class="meta">加餐：一个苹果或无糖酸奶。全天喝水 1.5–2 L。</p></div>`}
+function recipeCard(){const r=RECIPES[(new Date().getDay()+6)%7];return `<div class="panel"><h2>今日推荐食谱</h2><p class="meta">约 1200–1400 kcal，便宜好做；按口味换同类食材。</p><p><b>早餐</b> ${esc(r[0])}</p><p><b>午餐</b> ${esc(r[1])}</p><p><b>晚餐</b> ${esc(r[2])}</p><p class="meta">加餐：一个苹果或无糖酸奶。全天喝水 1.5–2 L。</p></div>`}
 
-habitCard = function(){const ex=store.get('exercise:'+today());return `<div class="panel"><h2>照顾自己</h2>${action(ex?.done?'✓ 今日运动已记录':'记录今日运动','exercise')}<p class="meta">选适合自己的活动；训练强度以能正常说话为准。</p></div>${recipeCard()}`};
+habitCard = function(){
+  const w=store.get('water:'+today())?.value||0, ex=store.get('exercise:'+today());
+  return `<div class="panel"><h2>喝水</h2><p class="meta">${w} / 8 杯（每杯约 250 ml）</p><div class="water">${Array.from({length:8},(_,i)=>action('◉ '+(i+1),'water',String(i+1),w===i+1?'active':'')).join('')}${action('清零','water','0')}</div></div>
+  <div class="panel"><h2>运动</h2>${action(ex?.done?'✓ 今日运动已记录':'记录今日运动','exercise')}<p class="meta">强度以能正常说话为准。</p></div>${recipeCard()}`;
+};
 
 renderToday = function(){
   const list=tasks().filter(t=>t.date===today());
   const dn=list.filter(t=>t.done).length;
-  const overdue=tasks().filter(t=>!t.done&&t.date&&t.date<today());
-  const cs=store.all('course').filter(c=>c.kind==='course');
-  const rec=list.filter(t=>!t.done&&t.category!=='固定课程').sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'))[0];
-  const goals=cs.map(c=>{
-    const ts=tasks().filter(t=>t.courseId===c.id);
-    const p=progress(ts),dn2=ts.filter(t=>t.done).length;
-    const next=ts.filter(t=>!t.done).sort((a,b)=>((a.date||'9999')+(a.start||'99')).localeCompare((b.date||'9999')+(b.start||'99')))[0];
-    return `<div class="goal-row"><div class="goal-head"><b>${esc(c.title)}</b><span>${p}%</span></div><div class="progress"><i style="width:${p}%"></i></div><p class="meta">第 ${Math.min(dn2+1,ts.length)} 步 / 共 ${ts.length} 步${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>${next?action('下一步 →','detail',next.id,'primary'):''}</div>`;
-  }).join('');
+  const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
   const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
   const untimed=list.filter(t=>!t.start);
-  return `${!settings().confirmed?`<div class="notice"><b>先确认日期与目标</b><p>确认学期、截止日和可用时间后再安排。</p>${action('开始确认','onboard','','primary')}</div>`:''}<div class="panel"><div class="toolbar"><h2>目标进度</h2></div><p class="meta">今天先做这一项：${rec?esc(rec.title):'选一个目标开始'}</p>${goals||empty('还没有目标')}</div>
-  <details class="panel"><summary>今日安排 · ${dn}/${list.length} 项完成</summary><p class="meta">勾选即完成，首次完成 +10 分。</p>${timed.map(row).join('')||empty('没有已定时任务')}<h3>时间待定</h3>${untimed.map(row).join('')||empty('没有待定任务')}</details>
-  ${overdue.length?`<details class="panel"><summary>未完成的历史 · ${overdue.length} 项</summary>${overdue.slice(0,12).map(row).join('')}</details>`:''}
-  <details class="panel"><summary>每日结算</summary><p>${dn} / ${list.length} 项完成；今日首次完成奖励 ${store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0)} 分。</p><p class="meta">每条任务首次完成 +10 分；取消不扣分，重做不再发分。</p>${action(store.get('settle:'+today())?'已结算 · 查看最新汇总':'确认今日结算','settle')}</details>
-  <details class="panel"><summary>照顾自己</summary>${habitCard()}</details>`;
+  const overdue=tasks().filter(t=>!t.done&&t.date&&t.date<today());
+  const all=dn===list.length&&list.length>0;
+  return `<div class="panel"><div class="toolbar"><h2>今日安排</h2>${action('＋ 任务','newTask')}</div>
+  <p class="today-line">${all?'今天全部完成 🎉':'已完成 '+dn+' / '+list.length} · 今日 +${award} 分 · 连续 ${streakDays()} 天</p>
+  ${timed.map(row).join('')||empty('今天没有已定时的任务')}
+  ${untimed.length?'<h3>时间待定</h3>'+untimed.map(row).join(''):''}
+  </div>
+  ${overdue.length?`<details class="panel"><summary>没做完的（${overdue.length}）</summary><p class="meta">可以单项延期，或直接勾掉。</p>${overdue.slice(0,12).map(row).join('')}</details>`:''}`;
 };
+function streakDays(){const set=new Set(store.all('award').map(a=>a.date));let n=0;const d=new Date();while(set.has(localISO(d))){n++;d.setDate(d.getDate()-1)}return n}
+function localISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 
-renderRewards = function(){return `<div class="panel hero"><div><h2>${store.balance()} 积分</h2><p>每条任务首次完成 +10；同一条任务永不重复奖励。</p><p class="meta">云端模式兑换需联网，并由数据库检查余额。</p></div><div class="flower">✧</div></div><div class="reward-grid">${rewards.map((r,i)=>`<div class="panel"><h3>${esc(r[0])}</h3><p>${r[1]} 分</p><p class="meta">${r[2]} 元</p>${action('兑换','redeem',i,'primary')}</div>`).join('')}</div><details class="panel"><summary>兑换记录</summary>${store.all('redemption').map(r=>`<p>${esc(r.date)} · ${esc(r.name)} · ${r.cost} 分</p>`).join('')||empty()}</details>`};
+renderRewards = function(){
+  const settle=store.get('settle:'+today());
+  return `<div class="panel hero"><div><h2>${store.balance()} 积分</h2><p>每条任务首次完成 +10；同一条任务永不重复奖励。</p><p class="meta">兑换需联网，由数据库检查余额。</p></div><div class="flower">✧</div></div>
+  <div class="reward-grid">${rewards.map((r,i)=>`<div class="panel"><h3>${esc(r[0])}</h3><p>${r[1]} 分</p><p class="meta">${r[2]} 元</p>${action('兑换','redeem',i,'primary')}</div>`).join('')}</div>
+  <details class="panel"><summary>每日结算</summary><p class="meta">每条任务首次完成 +10 分；取消不扣分，重做不再发分。</p>${action(settle?'已结算 · 查看最新汇总':'确认今日结算','settle')}</details>
+  <details class="panel"><summary>兑换记录</summary>${store.all('redemption').map(r=>`<p>${esc(r.date)} · ${esc(r.name)} · ${r.cost} 分</p>`).join('')||empty()}</details>`;
+};
 
 renderWeek = function(){
   const dates=Array.from({length:7},(_,i)=>addDays(week,i));
