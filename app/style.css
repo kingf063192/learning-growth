@@ -30,3 +30,5 @@ details.panel>summary+*{margin-top:10px}
 .agenda-day .dayhead.today{color:var(--pink)}
 .meta.danger{color:#b4453f}
 @media(max-width:560px){.reward-grid{grid-template-columns:repeat(2,1fr)}}
+
+.today-line{font-size:13.5px;color:var(--pink);font-weight:600;margin:0 0 8px}
