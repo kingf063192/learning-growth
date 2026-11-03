@@ -57,6 +57,27 @@ a{color:var(--pink)}
 .jt th,.jt td{border:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
 .jt th{background:#fcfafb;font-weight:600;font-size:12px;color:var(--muted)}
 .jt .tier{white-space:nowrap;font-weight:600}
+
+.stage{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.stage.locked{opacity:.55;background:#fcfafb}
+.stage.now{border-color:var(--pink);box-shadow:0 0 0 3px var(--soft)}
+.stage.done{background:#f7fbf8;border-color:#cfe9da}
+.sh{display:flex;gap:10px;align-items:flex-start}
+.sh .idx{flex:none;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--muted)}
+.stage.done .idx{background:#2f8f6b;border-color:#2f8f6b;color:#fff}
+.stage.now .idx{background:var(--pink);border-color:var(--pink);color:#fff}
+.sh .st{flex:1;min-width:0}
+.sb{font-size:11px;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.sb.done{background:#e6f6ee;color:#1f7a52}
+.sb.wait{background:#fdf6e3;color:#b8860b}
+.sb.lock{background:#f1f2f4;color:#8a8f98}
+.sb.now{background:var(--soft);color:var(--pink)}
+.cl{list-style:none;padding:0;margin:8px 0}
+.cl li{padding:3px 0;font-size:13.5px}
+.cl input{width:19px;height:19px;accent-color:var(--pink);margin-right:6px;vertical-align:-3px}
+.sf{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.sf button{min-height:36px}
+.sf .link{border:none;background:none;color:var(--pink);padding:0 4px}
 </style>
 </head>
 <body>
