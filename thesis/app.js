@@ -85,7 +85,7 @@ function bindTask(){
     try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:name,p_body:body});load()}catch(e){toast(e.message)}
   });
   document.querySelectorAll('[data-up]').forEach(el=>el.onchange=async()=>{
-    const id=el.getAttribute('data-up'),f=el.files[0];if(!f)return;
+    const id=el.getAttribute('data-up'),f=el.files[0];if(!f)return;if(f.size>20*1024*1024){toast('文件超过 20 MB，请压缩后再传');return;}
     const name=localStorage.getItem('thesis-name')||'匿名';
     const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
     try{
