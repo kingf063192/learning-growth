@@ -44,3 +44,16 @@ details.panel>summary+*{margin-top:10px}
 .stars{display:flex;gap:1px;flex:none}
 .stars button{min-height:28px;padding:0 3px;border:none;background:none;font-size:17px;line-height:1;color:#e3d3dc}
 .stars button.on{color:var(--pink)}
+
+.focus-now{background:linear-gradient(180deg,#fff6fa,#fff)}
+.now-title{font-size:20px;margin:4px 0 12px;line-height:1.4}
+button.big{width:100%;min-height:52px;font-size:16.5px;border-radius:12px}
+.mini-btn{flex:none;min-height:30px;padding:2px 8px;font-size:12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--muted);align-self:flex-start;margin-top:1px}
+.mini-btn:active{background:var(--soft);color:var(--pink)}
+.link-btn{border:none;background:none;color:var(--pink);padding:8px 0;font-size:13.5px}
+.focusbox{position:fixed;inset:0;background:rgba(57,44,53,.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px}
+.focus-card{background:#fff;border-radius:18px;padding:22px;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.focus-card h3{font-size:17px;margin:6px 0 10px;line-height:1.45}
+.focus-card .clock{font-size:52px;font-weight:800;color:var(--pink);letter-spacing:2px;margin:6px 0 14px;font-variant-numeric:tabular-nums}
+.focus-actions{display:flex;flex-direction:column;gap:8px}
+.focus-actions button{min-height:46px;border-radius:11px}
