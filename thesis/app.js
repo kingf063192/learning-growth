@@ -30,7 +30,7 @@ async function load(){
     if(!data.ok){data=null;localStorage.removeItem('thesis-code');toast('分享码无效或已停用');render();return}
     localStorage.setItem('thesis-code',code);
     render();
-  }catch(e){toast('加载失败：'+e.message);render()}
+  }catch(e){alert('加载失败：'+e.message);render()}
 }
 
 
@@ -44,7 +44,7 @@ async function doAuth(signup){
     const d=await r.json();
     if(!r.ok)throw Error(d.error_description||d.msg||'失败');
     if(!d.access_token){toast('注册成功，去邮箱点确认链接后再登录');return}
-    session=d;localStorage.setItem('thesis-session',JSON.stringify(d));
+    session=d;localStorage.setItem('thesis-session',JSON.stringify(d));role='owner';localStorage.setItem('thesis-role','owner');
     await load();toast(signup?'注册成功':'登录成功');
   }catch(e){toast(e.message)}
 }
@@ -470,6 +470,7 @@ render = function(){
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.getAttribute('data-tab');render()});
   const ql=$('#qLogin');if(ql)ql.onclick=()=>doAuth(false);
   const qs=$('#qSignup');if(qs)qs.onclick=()=>doAuth(true);
+  const bo=$('#beOwner');if(bo)bo.onclick=()=>{role='owner';localStorage.setItem('thesis-role','owner');render()};
   const sr=$('#switchRole');if(sr)sr.onclick=()=>{localStorage.removeItem('thesis-role');role='';render()};
   const rf=$('#refresh');if(rf)rf.onclick=()=>load();
   const mg=$('#mgBtn');if(mg)mg.onclick=()=>{manage=!manage;render()};
@@ -597,17 +598,7 @@ render = function(){
     const ol=$('#ownerLink');if(ol)ol.onclick=e=>{e.preventDefault();renderOwner()};
     return;
   }
-  if(!role){
-    app.innerHTML=`<div class="panel"><h2>你是谁？</h2>
-      <div class="row-actions" style="flex-direction:column">
-        <button class="primary" data-role="owner" style="width:100%">我是学生（论文作者本人）</button>
-        <button data-role="advisor" style="width:100%;margin-top:8px">我是导师（查看并确认）</button>
-      </div>
-      <p class="meta" style="margin-top:10px">学生需要登录：<a href="#" id="toLogin">学生登录 / 注册</a></p></div>`;
-    document.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{role=b.getAttribute('data-role');localStorage.setItem('thesis-role',role);render()});
-    const tl=$('#toLogin');if(tl)tl.onclick=e=>{e.preventDefault();role='owner';localStorage.setItem('thesis-role','owner');code='';data=null;localStorage.removeItem('thesis-code');render()};
-    return;
-  }
+  if(!role)role=(session?'owner':'advisor');
   const sm=stageMap(), defs=defsOf(), total=defs.length;
   const doneN=defs.filter(s=>stageDone(sm,s.id)).length, pct=total?Math.round(doneN/total*100):0;
   const cm=(data.comments||[]).filter(c=>!c.task_id), fs=(data.files||[]);
@@ -615,7 +606,7 @@ render = function(){
     <div class="form"><input id="qEmail" placeholder="邮箱" type="email"><input id="qPass" placeholder="密码" type="password"><button class="primary" id="qLogin">登录</button><button id="qSignup">注册</button></div></div>`:'';
   app.innerHTML=`${loginPanel}
   <div class="panel">
-    <div class="rolebar"><span class="rolebadge ${role}">${role==='owner'?'学生端':'导师端'}</span><span class="meta">${role==='owner'?'学生（论文作者）':'导师（查看与确认）'}</span><button class="link" id="switchRole">切换身份</button></div>
+    <div class="rolebar"><span class="rolebadge ${role}">${role==='owner'?'学生端':'导师端'}</span><span class="meta">${role==='owner'?'学生（论文作者）':'导师（查看与确认）'}</span><button class="link" id="switchRole">切换身份</button>${role!=='owner'?'<button class="link" id="beOwner">学生登录</button>':''}</div>
     <div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
     <p class="meta">${doneN}/${total} 阶段双方确认 · 都确认后进入下一阶段</p>
