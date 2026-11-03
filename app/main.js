@@ -878,7 +878,7 @@ ensureDailyStudy = async function(){
 
 renderToday = function(){
   const isStudy=t=>t.category!=='固定课程'&&t.courseId!=='g-thesis';
-  const list=tasks().filter(t=>t.date===today()&&isStudy(t)&&!isHomework(t));
+  const list=tasks().filter(t=>t.date===today()&&isStudy(t));
   const dn=list.filter(t=>t.done).length;
   const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
   const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
@@ -887,7 +887,7 @@ renderToday = function(){
   const allDone=dn===list.length&&list.length>0;
   const thesis=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const thesisNow=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done&&t.date&&t.date<=today())[0]||thesis[0];
-  const hw=tasks().filter(t=>!t.done&&isHomework(t)&&(!t.date||t.date<=addDays(today(),7))).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,8);
+  const hw=tasks().filter(t=>!t.done&&isHomework(t)&&t.date!==today()&&(!t.date||t.date<=addDays(today(),7))).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,8);
   const rowC=t=>{
     const c=colorOf(t);
     return `<div class="row ${t.done?'done':''}"><input type="checkbox" data-task="${esc(t.id)}" ${t.done?'checked':''}>
@@ -951,3 +951,58 @@ renderWeek = function(){
     <tbody>${TT_SLOTS.map(sl=>`<tr><th class="tt-th">${sl}<br><span>${map[sl]?map[sl][0]+'–'+map[sl][1]:''}</span></th>${dates.map(d=>cell(d,sl)).join('')}</tr>`).join('')}</tbody>
   </table></div></div>`;
 };
+
+/* ===== 有期限的作业：按课表自动生成，带截止日，进每日计划 ===== */
+const TERM_START='2026-09-07';
+function homeworkSpecs(){
+  const out=[], t=today();
+  for(let wk=1;wk<=16;wk++){
+    const mon=addDays(TERM_START,(wk-1)*7), tue=addDays(mon,1), wed=addDays(mon,2);
+    if(mon>=t){
+      [['note','课堂笔记',25],['hw','手写作业',35],['mind','思维导图',20]].forEach(([suf,name,dur])=>{
+        out.push({id:`hw:inorg:${mon}:${suf}`,courseId:'g-inorg',title:`无机化学 · ${name}（${mon.slice(5)}课后）`,date:addDays(mon,7),duration:dur});
+      });
+    }
+    if(wed>=t)out.push({id:`hw:cook:${wed}`,courseId:'g-cook',title:`烹饪化学 · 实训报告（${wed.slice(5)}课后）`,date:addDays(wed,7),duration:40});
+    if(wk<=12&&wed>=t)out.push({id:`hw:inno:${wed}`,courseId:'extra-2',title:`创新创业 · 学习通作业（${wed.slice(5)}课后）`,date:addDays(wed,7),duration:30});
+  }
+  [3,6,9,12,15].forEach((w,i)=>{
+    out.push({id:`hw:org:${w}`,courseId:'g-org',title:`有机化学 · 第 ${i+1} 次书面作业`,date:'2027-01-08',duration:45});
+  });
+  out.push({id:'hw:lit:1',courseId:'extra-1',title:'文献检索 · 开题报告',date:addDays(t,7),duration:60});
+  return out;
+}
+async function ensureHomeworkRecords(){
+  const t=today();
+  for(const r of homeworkSpecs()){
+    if(r.date<t)continue;
+    if(store.get(r.id))continue;
+    await store.put({...r,kind:'task',category:'课程',done:false,start:'',end:''});
+  }
+}
+
+ensureDailyStudy = (function(prev){
+  return async function(){
+    await prev();
+    // 作业：4 天内到期的，优先拉进今天（最多 2 个）
+    const t=today(), in4=addDays(t,4);
+    const hw=tasks().filter(x=>!x.done&&isHomework(x)&&x.date&&x.date>=t&&x.date<=in4&&x.date!==t);
+    const todays=tasks().filter(x=>x.date===t&&x.category!=='固定课程').length;
+    let room=Math.max(0,6-todays);
+    for(const x of hw.sort((a,b)=>a.date.localeCompare(b.date)).slice(0,Math.min(2,room))){
+      await store.put({...x,date:t,start:'',end:''});
+    }
+    render();try{await cloud.sync()}catch(e){}
+  };
+})(ensureDailyStudy);
+
+/* 今日：作业也算正常任务，进“今天要做” */
+renderToday = (function(prev){
+  return function(){
+    let html=prev();
+    // 把“作业/杂事”里已排进今天的去掉（避免重复）
+    return html;
+  };
+})(renderToday);
+
+(async()=>{try{await ensureHomeworkRecords()}catch(e){};try{await ensureDailyStudy()}catch(e){}})();
