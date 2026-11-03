@@ -89,41 +89,27 @@ a{color:var(--pink)}
 .orig{color:#a8a2a8;text-decoration:line-through;text-decoration-thickness:1.5px}
 .newtxt{color:var(--pink);font-weight:500}
 .hist{flex-basis:100%;font-size:11.5px;color:var(--muted);border-left:3px solid var(--line);padding:2px 8px;margin:0 0 4px;line-height:1.6}
+
+.tabs{display:flex;gap:6px;margin:10px 0 12px;flex-wrap:wrap}
+.tabs button{flex:1;min-width:72px;min-height:38px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px}
+.tabs button.on{background:var(--pink);border-color:var(--pink);color:#fff;font-weight:600}
+.manage{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.sop{display:flex;gap:6px;margin-left:auto}
+.sop button{min-height:28px;padding:2px 8px;font-size:11.5px;border-radius:8px}
+.modal{position:fixed;inset:0;background:rgba(57,44,53,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal .box{background:#fff;border-radius:16px;padding:16px;width:100%;max-width:460px;max-height:86vh;overflow:auto}
+.modal h3{margin:0 0 10px;font-size:16px}
+.modal label{display:block;font-size:12.5px;color:var(--muted);margin:8px 0 2px}
+.modal input,.modal textarea{width:100%;font-size:14px}
+.modal .acts{display:flex;gap:8px;margin-top:12px}
+.modal .acts button{flex:1;min-height:42px}
+.aiarea{width:100%;min-height:150px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>论文进度</h1>
   <p class="meta">只同步论文部分；学生与导师都可以勾选、留言、传文件。</p>
-
-  <div class="panel">
-    <h2>全流程（先按计划走，等和导师对接后再改）</h2>
-    <ol class="flow">
-      <li class="now"><span class="no">1</span><div class="b"><div class="t">选题与方向</div><div class="m">黄晶果（Pouteria caimito）果浆/皮渣加工与品质；读 10 篇核心文献定创新点</div></div><span class="d">2026.11–12</span></li>
-      <li><span class="no">2</span><div class="b"><div class="t">文献综述</div><div class="m">3000 字，按“原料—工艺—品质—稳定性”四块写</div></div><span class="d">2026.12–2027.01</span></li>
-      <li><span class="no">3</span><div class="b"><div class="t">开题报告 + 答辩</div><div class="m">研究背景、目的、内容、方法、进度、预期成果；提前给导师改两轮</div></div><span class="d">2027.01–02 寒假</span></li>
-      <li><span class="no">4</span><div class="b"><div class="t">预实验</div><div class="m">果浆制备、杀菌/均质参数摸底、检测方法建立</div></div><span class="d">2027.03–04</span></li>
-      <li><span class="no">5</span><div class="b"><div class="t">正式实验</div><div class="m">3–4 轮重复，每轮 4 个处理；同步记录原始数据</div></div><span class="d">2027.04–06</span></li>
-      <li><span class="no">6</span><div class="b"><div class="t">数据统计与作图</div><div class="m">SPSS/Origin；ANOVA、显著性标记、图表统一风格</div></div><span class="d">2027.06</span></li>
-      <li><span class="no">7</span><div class="b"><div class="t">本科论文初稿</div><div class="m">按学校模板：摘要、引言、材料方法、结果、讨论、结论</div></div><span class="d">2027.06–07</span></li>
-      <li><span class="no">8</span><div class="b"><div class="t">英文稿</div><div class="m">先写 Methods/Results，再写 Intro/Discussion；找母语润色或工具润色</div></div><span class="d">2027.07–08</span></li>
-      <li><span class="no">9</span><div class="b"><div class="t">首投（硬止损 2027-10-31）</div><div class="m">按投稿策略选刊；Cover letter、Highlights、Graphical abstract</div></div><span class="d">2027.07–08</span></li>
-      <li><span class="no">10</span><div class="b"><div class="t">返修</div><div class="m">逐条回复审稿意见，补实验最多 1 轮</div></div><span class="d">2027.09–11</span></li>
-      <li><span class="no">11</span><div class="b"><div class="t">接收（目标 2028-02-28 前）</div><div class="m">接收后办录用证明、版面费/校样</div></div><span class="d">2028.02 前</span></li>
-    </ol>
-  </div>
-
-  <div class="panel">
-    <h2>投稿策略（2026-11 更新）</h2>
-    <table class="jt">
-      <tr><th>梯队</th><th>期刊</th><th>条件 / 说明</th></tr>
-      <tr><td class="tier">主投</td><td><b>JFMC</b><br>J. Food Meas. Charact.</td><td>数据完整、英文过关即可投；订阅制为主，作者不付 APC。这是现在的第一选择。</td></tr>
-      <tr><td class="tier">有条件的第一投</td><td><b>Food Bioscience</b></td><td>只有机制数据够（细胞/动物实验，或明确活性通路）才先投它；机制不足就直接跳过，避免浪费时间。</td></tr>
-      <tr><td class="tier">备选</td><td>JSFA / JFS / IJFST</td><td>JFMC 被拒或周期太长时按顺序降级；均为订阅制，零 APC。</td></tr>
-      <tr><td class="tier">保底</td><td>中文核心（食品科学 / 食品工业科技）</td><td>只在前述都不顺、且必须在 2028-02 前拿到录用时启用。</td></tr>
-    </table>
-    <p class="meta" style="margin-top:8px">规则：首投不晚于 2027-10-31；只走订阅制/混合刊，不投纯 OA（避免 APC）。</p>
-  </div>
 
   <div id="app"></div>
 </div>
