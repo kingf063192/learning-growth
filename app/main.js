@@ -1,4 +1,4 @@
-/* main.js — 渲染与交互。七个页面：今日 / 行程 / 学习 / 复习 / 生活 / 奖励 / 设置
+/* main.js — 渲染与交互。五个页面：今日 / 行程 / 学习 / 生活（含奖励）/ 设置
  * 铁律：每个 renderXxx 只定义一次，不追加覆盖。
  */
 import {
@@ -270,11 +270,13 @@ function renderWeek() {
         const draggable = it.type === 'task' && x.category !== '固定课程';
         const cls = `ev ${evClass(it)}${done ? ' done' : ''}${isConflict ? ' conflict' : ''}${draggable ? ' ev-draggable' : ''}`;
         const attrs = draggable ? ` data-drag="1" data-action="detail" data-id="${esc(x.id)}"` : ` data-action="detail" data-id="${esc(idOf(it))}"`;
-        return `<button class="${cls}"${attrs} title="${esc(x.title)}">${isConflict ? '⚠ ' : ''}${esc(x.title)}<br><small>${esc(x.start || '')}${x.end ? '–' + esc(x.end) : ''}</small></button>`;
+        /* 行标签已经是 24 小时制时间，只在和行起始时间不一致时才额外标注，避免每格都写一遍 */
+        const offSlot = (x.start || '') !== sl.start;
+        return `<button class="${cls}"${attrs} title="${esc(x.title)} ${esc(x.start || '')}${x.end ? '–' + esc(x.end) : ''}">${isConflict ? '⚠ ' : ''}${esc(x.title)}${offSlot ? `<br><small>${esc(x.start || '')}${x.end ? '–' + esc(x.end) : ''}</small>` : ''}</button>`;
       }).join('');
       return `<div class="wg-cell" data-date="${d}" data-slot="${sl.key}">${body}</div>`;
     }).join('');
-    return `<div class="wg-rowlabel">${sl.key}<br><small>${sl.start}</small></div>${cells}`;
+    return `<div class="wg-rowlabel">${sl.start}</div>${cells}`;
   }).join('');
 
   const legend = `<div class="legend">
@@ -333,42 +335,32 @@ function renderCourses() {
     <div class="toolbar">${courses.length > 5 ? action(`${showAllCourses ? '只看前 5 门' : `展开全部 ${courses.length} 门`}`, 'allCourses') : ''}</div>`;
 }
 
-/* ── 复习 / 生活 / 奖励（保留原有功能） ───────────────────── */
-function row(t) {
-  const c = courseOf(t), ch = chapterOf(t);
-  return `<div class="row ${t.done ? 'done' : ''}"><input type="checkbox" data-task="${esc(t.id)}" ${t.done ? 'checked' : ''}>
-    <div class="body"><button class="title" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button>
-    <div class="meta">${esc(t.date || '未排')} · ${esc(t.category || '')} ${esc(c?.title || '')}${ch ? ' / ' + esc(ch.title) : ''}</div></div>
-    ${action('详情', 'detail', t.id)}</div>`;
-}
-function renderReview() {
-  const cards = store.all('card');
-  return `<div class="panel"><div class="toolbar"><h2>复习卡片</h2>${action('添加卡片', 'newCard')}${action('导入卡片 JSON', 'importCards')}</div>
-    <p class="meta">先看问题，主动回忆，再查看答案。到期后放入今日复习。</p>
-    ${cards.map(c => `<div class="row"><div class="body"><h3>${esc(c.front)}</h3><p class="meta">下次 ${esc(c.next || '')} · ${esc(store.get(c.chapterId)?.title || '独立卡片')}</p>
-      ${action('查看答案', 'answer', c.id)} ${c.next <= today() ? action('放入今日复习', 'reviewTask', c.id) : ''}</div></div>`).join('') || empty()}</div>`;
-}
+/* ── 生活页（生活 + 奖励合并；原「复习」页按需求移除） ────────── */
+const REWARDS = [['一集番 / 1 小时游戏', 30, 0], ['奶茶一杯', 50, 12], ['外卖改善一顿', 80, 25], ['电影 / 买本书', 120, 45], ['小愿望（画材/鼓棒）', 200, 70], ['月度大奖励', 500, 120]];
 function renderLife() {
   const bills = store.all('bill').filter(x => x.date?.startsWith(lifeMonth)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const w = store.get('water:' + today())?.value || 0, ex = store.get('exercise:' + today());
+  const redeemed = store.all('redemption').slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
   return `<div class="grid"><div>
+    <div class="panel hero"><div><h2>${store.balance()} 积分</h2>
+      <p>每条任务首次完成 +10；同一条任务永不重复奖励。</p>
+      <p class="meta">云端模式兑换需联网，并由数据库检查余额。</p></div><div class="flower">✧</div></div>
+    <div class="panel"><div class="toolbar"><h2>奖励兑换</h2></div>
+      ${REWARDS.map((r, i) => `<div class="row"><div class="body"><h3>${r[0]}</h3><div class="meta">${r[1]} 分 · ${r[2]} 元</div></div>${action('兑换', 'redeem', i)}</div>`).join('')}
+    </div>
     <div class="panel"><h2>照顾自己</h2><p>喝水记录 · ${w} 杯（每杯约 250 ml）</p>
       <div class="water">${Array.from({ length: 8 }, (_, i) => action('◉ ' + (i + 1), 'water', String(i + 1), w === i + 1 ? 'active' : '')).join('')}${action('清零', 'water', '0')}</div>
       <p class="meta">按个人需要记录，不自动制定饮水目标。</p>
       ${action(ex?.done ? '✓ 今日运动已记录' : '记录今日运动', 'exercise')}</div>
+  </div><div>
+    <div class="panel"><div class="toolbar"><h2>账单</h2><label>查看月份<input type="month" id="lifeMonth" value="${lifeMonth}"></label>${action('记一笔', 'bill')}</div>
+      <p>${lifeMonth} 收入 ${bills.filter(x => x.type === 'in').reduce((s, x) => s + Number(x.amount), 0).toFixed(2)} 元 · 支出 ${bills.filter(x => x.type !== 'in').reduce((s, x) => s + Number(x.amount), 0).toFixed(2)} 元</p>
+      ${bills.map(x => `<div class="row"><div class="body">${esc(x.note || x.cat)}<div class="meta">${esc(x.date)} · ${esc(x.cat)}</div></div>${x.type === 'in' ? '+' : '−'}${esc(x.amount)} 元${action('删除', 'delete', x.id)}</div>`).join('') || empty()}</div>
+    <div class="panel"><h2>兑换记录</h2>${redeemed.map(r => `<p>${esc(r.date)} · ${esc(r.name)} · ${r.cost} 分</p>`).join('') || empty('还没兑换过')}</div>
     <div class="panel"><div class="toolbar"><h2>体重记录</h2>${action('添加记录', 'weight')}</div>
       <p class="meta">仅记录趋势，不自动设定减重目标。</p>
       ${store.all('weight').sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 30).map(x => `<div class="row">${esc(x.date)} · ${esc(x.kg)} kg ${action('删除', 'delete', x.id)}</div>`).join('') || empty()}</div>
-  </div><div class="panel"><div class="toolbar"><h2>账单</h2><label>查看月份<input type="month" id="lifeMonth" value="${lifeMonth}"></label>${action('记一笔', 'bill')}</div>
-    <p>${lifeMonth} 收入 ${bills.filter(x => x.type === 'in').reduce((s, x) => s + Number(x.amount), 0).toFixed(2)} 元 · 支出 ${bills.filter(x => x.type !== 'in').reduce((s, x) => s + Number(x.amount), 0).toFixed(2)} 元</p>
-    ${bills.map(x => `<div class="row"><div class="body">${esc(x.note || x.cat)}<div class="meta">${esc(x.date)} · ${esc(x.cat)}</div></div>${x.type === 'in' ? '+' : '−'}${esc(x.amount)} 元${action('删除', 'delete', x.id)}</div>`).join('') || empty()}</div></div>`;
-}
-const REWARDS = [['一集番 / 1 小时游戏', 30, 0], ['奶茶一杯', 50, 12], ['外卖改善一顿', 80, 25], ['电影 / 买本书', 120, 45], ['小愿望（画材/鼓棒）', 200, 70], ['月度大奖励', 500, 120]];
-function renderRewards() {
-  return `<div class="panel hero"><div><h2>${store.balance()} 积分</h2><p>每条任务首次完成 +10。</p>
-    <p class="meta">云端模式兑换需联网，并由数据库检查余额。</p></div><div class="flower">✧</div></div>
-    <div class="course-grid">${REWARDS.map((r, i) => `<div class="panel"><h3>${r[0]}</h3><p>${r[1]} 分 · ${r[2]} 元</p>${action('兑换', 'redeem', i)}</div>`).join('')}</div>
-    <div class="panel"><h2>兑换记录</h2>${store.all('redemption').map(r => `<p>${esc(r.date)} · ${esc(r.name)} · ${r.cost} 分</p>`).join('') || empty()}</div>`;
+  </div></div>`;
 }
 
 /* ── 设置页 ───────────────────────────────────────────────── */
@@ -489,7 +481,7 @@ function taskForm(t = {}) {
 
 /* ── 动作分派 ─────────────────────────────────────────────── */
 async function handle(name, key) {
-  if (['editTask', 'editChapter', 'answer', 'makeCard', 'resolve'].includes(name) && key) await cloud.detail(key).catch(() => {});
+  if (['editTask', 'editChapter', 'resolve'].includes(name) && key) await cloud.detail(key).catch(() => {});
   const t = store.get(key);
   switch (name) {
     case 'detail': await detail(key); break;
@@ -588,25 +580,6 @@ async function handle(name, key) {
       <label><input type="checkbox" required> 我已对照课程资料核对，记录了错误或疑问</label><button class="primary">保存自测</button></form>`); break;
     case 'again': await store.merge([{ id: id(), kind: 'task', courseId: t.courseId, chapterId: t.chapterId, title: t.title + ' · 再学一次', category: t.category, duration: 20, order: t.order, date: addDays(today(), 1), done: false, source: 'manual' }]); toast('已新增明天的巩固任务'); closeModal(); render(); break;
     case 'postpone': modal('延期任务', `<form data-form="postpone" data-id="${esc(key)}">${input('新日期', 'date', addDays(t.date || today(), 1), 'date', 'required')}<button class="primary">确认延期</button><p class="meta">保留笔记和完成记录；延期后不放进时段。</p></form>`); break;
-
-    /* 复习卡片 */
-    case 'newCard': case 'makeCard':
-      modal('创建复习卡片', `<form data-form="card" data-id="${esc(name === 'makeCard' ? key : '')}">
-        ${input('问题（先显示）', 'front', t ? '如何解释 ' + t.title + '？' : '', 'text', 'required')}
-        <label>答案 / 核对依据<textarea name="back" required>${esc(t?.selftest || '')}</textarea></label><button class="primary">保存卡片</button></form>`);
-      break;
-    case 'importCards': modal('导入复习卡片', `<form data-form="cards"><p>格式：{"cards":[{"front":"问题","back":"答案"}]}</p><textarea name="json" required></textarea><button class="primary">校验并导入</button></form>`); break;
-    case 'answer': modal(t.front, `<div class="answer">${esc(t.back || '旧卡片未提供答案，请补充。')}</div>
-      <p class="meta">想起来了则延后复习，忘了则明天再练。</p>${action('想起来了', 'remember', key)} ${action('忘了，明天再学', 'forgot', key)}`); break;
-    case 'reviewTask': await store.merge([{ id: 'review:' + key + ':' + t.next, kind: 'task', cardId: key, chapterId: t.chapterId, courseId: store.get(t.chapterId)?.courseId, title: '复习：' + t.front, date: today(), category: '复习', duration: 20, done: false }]); render(); await cloud.sync(); toast('已加入今日'); break;
-    case 'remember': case 'forgot': {
-      const taskId = 'review:' + key + ':' + t.next;
-      if (!store.get(taskId)) await store.merge([{ id: taskId, kind: 'task', cardId: key, title: '复习：' + t.front, date: today(), category: '复习', duration: 20, done: false }]);
-      await complete(taskId, true);
-      const stage = name === 'forgot' ? 0 : Math.min((t.stage || 0) + 1, 5);
-      await save({ ...t, stage, next: addDays(today(), [1, 2, 4, 7, 15, 30][stage]) });
-      closeModal(); break;
-    }
 
     /* 生活 */
     case 'water': await save({ id: 'water:' + today(), kind: 'water', date: today(), value: +key }); break;
@@ -775,14 +748,6 @@ document.addEventListener('submit', async e => {
       case 'chapter': await save({ ...t, ...d, _baseVersion: +f.dataset.version, weight: d.weight != null ? clamp(+d.weight, 1, 5) : t?.weight }); closeModal(); break;
       case 'weight': await save({ id: id(), kind: 'weight', date: d.date, kg: +d.kg }); closeModal(); break;
       case 'bill': await save({ id: id(), kind: 'bill', date: d.date, type: d.type, amount: +d.amount, cat: d.cat, note: d.note }); closeModal(); break;
-      case 'card': await save({ id: id(), kind: 'card', front: d.front, back: d.back, chapterId: t?.chapterId, stage: 0, next: addDays(today(), 1) }); closeModal(); break;
-      case 'cards': {
-        const o = JSON.parse(d.json);
-        if (!Array.isArray(o.cards) || !o.cards.every(x => typeof x.front === 'string' && typeof x.back === 'string')) throw Error('卡片格式错误');
-        await backup();
-        await store.merge(o.cards.map(x => ({ ...x, id: 'card:' + hash(x.front + '|' + x.back), kind: 'card', stage: 0, next: addDays(today(), 1) })));
-        closeModal(); render(); await cloud.sync(); break;
-      }
       case 'settings': {
         const s = settings();
         await putSetting({ capacity: +d.capacity, break: +d.break, dailyFill: +d.dailyFill, focusMinutes: +d.focusMinutes });
@@ -884,19 +849,19 @@ window.addEventListener('online', () => cloud.sync().then(render));
 window.addEventListener('offline', () => cloud.statusSet(cloud.session ? '离线待同步' : '本地模式 · 离线可用'));
 window.addEventListener('hashchange', () => {
   const p = location.hash.slice(1);
-  if (['today', 'week', 'courses', 'review', 'life', 'rewards', 'settings'].includes(p)) { page = p; render(); }
+  if (['today', 'week', 'courses', 'life', 'settings'].includes(p)) { page = p; render(); }
 });
 window.addEventListener('focus', async () => { store.records = await store.readAll(); await cloud.sync(); render(); });
 setInterval(() => { if (!document.hidden) cloud.sync().then(() => { if (!$('#modal').open) render(); }); }, 60000);
 
 /* ── 渲染入口（唯一一处） ─────────────────────────────────── */
-const PAGES = { today: ['☀', '今日'], week: ['▦', '行程'], courses: ['▤', '学习'], review: ['◇', '复习'], life: ['♡', '生活'], rewards: ['✧', '奖励'], settings: ['⚙', '设置'] };
+const PAGES = { today: ['☀', '今日'], week: ['▦', '行程'], courses: ['▤', '学习'], life: ['♡', '生活'], settings: ['⚙', '设置'] };
 function render() {
   $('#nav').innerHTML = Object.entries(PAGES).map(([k, [icon, title]]) => `<button class="${page === k ? 'active' : ''}" data-page="${k}"><span>${icon}</span> ${title}</button>`).join('');
   $('#date').textContent = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
   $('#heading').textContent = (PAGES[page] || PAGES.today)[1];
   $('#sync').textContent = cloud.status;
-  const body = { today: renderToday, week: renderWeek, courses: renderCourses, review: renderReview, life: renderLife, rewards: renderRewards, settings: renderSettings }[page] || renderToday;
+  const body = { today: renderToday, week: renderWeek, courses: renderCourses, life: renderLife, settings: renderSettings }[page] || renderToday;
   $('#main').innerHTML = body();
 }
 

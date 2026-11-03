@@ -40,6 +40,8 @@ export const SLOTS=[
 ```
 
 行程页 **行 = 这六个时段**，**列 = 周一…周日**。固定日程与学习任务都用 `slot` 落到格子里。
+行标签**只显示 24 小时制时间**（`08:30` / `10:25` / …），不写「早/上午/下午」这类时段名；
+格子里的卡片只在**开始时间与行起始时间不一致时**才额外标注时间，一致就不重复写。
 
 ## 3. 数据模型（IndexedDB `records`，`kind` 区分）
 
@@ -111,7 +113,9 @@ export const SLOTS=[
 
 ## 5. 页面与 DOM 契约
 
-七个页面，导航顺序：`今日 / 行程 / 学习 / 复习 / 生活 / 奖励 / 设置`。
+五个页面，导航顺序：`今日 / 行程 / 学习 / 生活 / 设置`。
+
+> 变更记录（2026-11-03）：按用户要求取消「复习」页；「奖励」并入「生活」页（同一页里同时有积分/兑换、喝水、账单、体重、兑换记录）。`card` 记录类型仍保留在 `KINDS` 里，老数据只读不丢。
 
 ### 5.1 外壳 `index.html`
 
@@ -183,7 +187,7 @@ export const SLOTS=[
     <div class="week-grid">
       <div class="wg-corner"></div>
       <div class="wg-head today">周一<br>11-02</div>   × 7
-      <div class="wg-rowlabel">早<br>08:30</div>        × 6
+      <div class="wg-rowlabel">08:30</div>              × 6  <!-- 24 小时制，不写时段名 -->
       <div class="wg-cell" data-date="2026-11-02" data-slot="早">
         <button class="ev ev-fixed" data-action="detail" data-id="…">…</button>
         <button class="ev ev-study ev-draggable" draggable="true" data-drag="1" data-id="…">…</button>
