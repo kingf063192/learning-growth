@@ -149,3 +149,104 @@ async function loadCodes(){
 
 if(!config.url||!config.key){document.getElementById('app').innerHTML='<div class="panel">还没有配置 Supabase（app/config.js）</div>'}else{load()}
 window.addEventListener('hashchange',()=>{});
+
+/* ===== 阶段流程：双方确认才进入下一阶段 ===== */
+const STAGES=[
+ {id:'s1',t:'选题确认',d:'确定研究对象、创新点与题目表述',items:['确定研究对象：黄晶果果浆/皮渣','写清创新点（新基质+首组数据）','拟 2–3 个题目备选','导师确认方向']},
+ {id:'s2',t:'文献与引用',d:'核心文献清单 + 引用格式统一',items:['精读 10 篇核心文献','整理文献表（作者/年份/结论）','确定引用格式（学校/期刊）','导师确认文献清单']},
+ {id:'s3',t:'方法与指标',d:'工艺参数、检测指标与方法确认',items:['确定工艺组合与水平','确定检测指标（分层/沉淀/持水力/黏度/粒径）','确定方法标准号','导师确认方案']},
+ {id:'s4',t:'设备与材料',d:'设备可约、试剂耗材到位',items:['设备预约确认','试剂耗材采购清单','果实采购与贮存方案','导师确认开工条件']},
+ {id:'s5',t:'开题报告',d:'初稿→导师修改→定稿提交',items:['初稿完成','导师批注回复','定稿提交学院','开题答辩通过']},
+ {id:'s6',t:'预实验',d:'参数摸底与鲜/冻浆对比',items:['完成预实验','数据整理','导师看数据','确定正式方案']},
+ {id:'s7',t:'正式实验',d:'3–4 轮重复 + 贮藏取样',items:['正式实验完成','取样与检测完成','原始数据归档','导师确认数据完整']},
+ {id:'s8',t:'数据与统计',d:'统计、作图、结论',items:['ANOVA 与显著性','图表定稿','结论与讨论框架','导师确认']},
+ {id:'s9',t:'本科论文',d:'按模板成稿、查重',items:['初稿','修改稿','查重通过','导师签字']},
+ {id:'s10',t:'英文稿',d:'SCI 稿件与投稿材料',items:['Methods/Results','Intro/Discussion','润色','导师定稿']},
+ {id:'s11',t:'投稿',d:'主投 JFMC；首投不晚于 2027-10-31',items:['选定期刊','Cover letter','完成投稿','导师知悉']},
+ {id:'s12',t:'返修与接收',d:'回复审稿意见，拿到录用',items:['逐条回复','补实验（如需）','接收','录用证明']}
+];
+function stageMap(){const m={};((data&&data.stages)||[]).forEach(s=>m[s.stage_id]=s);return m}
+function stageDone(sm,id){const s=sm[id];return !!(s&&s.owner_ok&&s.advisor_ok)}
+function unlocked(sm,i){for(let k=0;k<i;k++){if(!stageDone(sm,STAGES[k].id))return false}return true}
+function checksOf(sm,id){const s=sm[id];return (s&&s.checks)||{}}
+
+async function stageSet(stageId,checks,owner,advisor){
+  await rpc('thesis_stage_set',{p_code:code,p_stage:stageId,p_checks:checks,p_owner:owner,p_advisor:advisor});
+  await load();
+}
+
+render = function(){
+  const app=$('#app');
+  if(!code||!data){
+    app.innerHTML=`<div class="panel"><h2>输入导师分享码</h2><p class="meta">由学生本人提供，形如 THESIS-7K2M</p>
+      <form id="codeForm"><input id="codeInput" placeholder="THESIS-XXXX" value="${esc(code)}"><button class="primary">打开</button></form>
+      <p class="meta" style="margin-top:12px">学生本人？<a href="#" id="ownerLink">生成 / 管理分享码</a></p></div><div id="owner"></div>`;
+    $('#codeForm').onsubmit=e=>{e.preventDefault();code=$('#codeInput').value.trim().toUpperCase();load()};
+    $('#ownerLink').onclick=e=>{e.preventDefault();renderOwner()};
+    return;
+  }
+  const sm=stageMap(), total=STAGES.length;
+  const doneN=STAGES.filter(s=>stageDone(sm,s.id)).length;
+  const pct=Math.round(doneN/total*100);
+  const cur=STAGES.findIndex((s,i)=>unlocked(sm,i)&&!stageDone(sm,s.id));
+  const cm=data.comments||[];
+  app.innerHTML=`
+  <div class="panel"><div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
+  <div class="bar"><i style="width:${pct}%"></i></div>
+  <p class="meta">${doneN} / ${total} 阶段已双方确认 · 每个阶段两边都确认后，才进入下一阶段</p>
+  <div class="row-actions"><button id="refresh">刷新</button><a href="#" id="switch">换分享码</a></div></div>
+  ${STAGES.map((st,i)=>{
+    const s=sm[st.id]||{}, ck=checksOf(sm,st.id);
+    const lock=!unlocked(sm,i);
+    const both=stageDone(sm,st.id);
+    const one=(s.owner_ok||s.advisor_ok)&&!both;
+    const cls=both?'done':lock?'locked':(i===cur?'now':'');
+    const badge=both?'<span class="sb done">已确认</span>':one?'<span class="sb wait">待对方确认</span>':lock?'<span class="sb lock">未解锁</span>':'<span class="sb now">进行中</span>';
+    const scm=cm.filter(c=>c.task_id===st.id);
+    return `<div class="stage ${cls}">
+      <div class="sh"><span class="idx">${i+1}</span><div class="st"><b>${esc(st.t)}</b><div class="meta">${esc(st.d)}</div></div>${badge}</div>
+      ${lock?'<p class="meta">上一阶段双方确认后解锁。</p>':`
+      <ul class="cl">${st.items.map((it,j)=>`<li><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${ck[j]?'checked':''}> ${esc(it)}</label></li>`).join('')}</ul>
+      <div class="sf">
+        <button class="${s.owner_ok?'primary':''}" data-sok="${st.id}:owner">${s.owner_ok?'✓ 我方已确认':'我方确认'}</button>
+        <button class="${s.advisor_ok?'primary':''}" data-sok="${st.id}:advisor">${s.advisor_ok?'✓ 导师已确认':'导师确认'}</button>
+        <button class="link" data-scmt="${st.id}">评语 (${scm.length})</button>
+      </div>
+      ${openComments.has(st.id)?`<div class="sub">${scm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有评语</p>'}
+        <div class="form"><input data-name="${st.id}" placeholder="你的名字" value="${esc(localStorage.getItem('thesis-name')||'')}"><textarea data-body="${st.id}" placeholder="对这一步的评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div></div>`:''}
+      `}
+    </div>`;
+  }).join('')}
+  <div class="panel"><h2>留言板</h2>${cm.filter(c=>!c.task_id).map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有留言</p>'}
+    <div class="form"><input id="gbName" placeholder="你的名字" value="${esc(localStorage.getItem('thesis-name')||'')}"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></div>`;
+  $('#refresh').onclick=()=>load();
+  $('#switch').onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');render()};
+  $('#gbSend').onclick=async()=>{
+    const name=$('#gbName').value.trim()||'匿名',body=$('#gbBody').value.trim();
+    if(!body)return;localStorage.setItem('thesis-name',name);
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:null,p_author:name,p_body:body});$('#gbBody').value='';load()}catch(e){toast(e.message)}
+  };
+  document.querySelectorAll('[data-st]').forEach(el=>el.onchange=async()=>{
+    const sid=el.dataset.st, j=el.dataset.j;
+    const cur2={...(checksOf(stageMap(),sid))};
+    cur2[j]=el.checked;
+    try{await stageSet(sid,cur2,null,null)}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-sok]').forEach(el=>el.onclick=async()=>{
+    const [sid,who]=el.getAttribute('data-sok').split(':');
+    const s=stageMap()[sid]||{};
+    try{
+      if(who==='owner')await stageSet(sid,s.checks||{},!(s.owner_ok),null);
+      else await stageSet(sid,s.checks||{},null,!(s.advisor_ok));
+    }catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-scmt]').forEach(el=>el.onclick=()=>{const id=el.getAttribute('data-scmt');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
+  document.querySelectorAll('[data-send]').forEach(el=>el.onclick=async()=>{
+    const id=el.getAttribute('data-send');
+    const name=document.querySelector(`[data-name="${id}"]`).value.trim()||'匿名';
+    const body=document.querySelector(`[data-body="${id}"]`).value.trim();
+    if(!body)return;localStorage.setItem('thesis-name',name);
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:name,p_body:body});load()}catch(e){toast(e.message)}
+  });
+};
+load();
