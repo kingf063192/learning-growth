@@ -20,7 +20,7 @@ let code=new URLSearchParams(location.search).get('code')||localStorage.getItem(
 let data=null, session=JSON.parse(localStorage.getItem('thesis-session')||'null');
 let openComments=new Set(), openEdits=new Set(), filter='todo';
 
-async function rpc(name,body){const r=await fetch(config.url+'/rest/v1/rpc/'+name,{method:'POST',headers:H(),body:JSON.stringify(body||{})});const t=await r.text();let d=null;try{d=JSON.parse(t)}catch(e){d=t}if(!r.ok)throw Error((d&&(d.message||d.error))||t||r.status);return d}
+async function rpc(name,body){const hd=Object.assign({},H(),{Authorization:'Bearer '+((session&&session.access_token)||config.key)});const r=await fetch(config.url+'/rest/v1/rpc/'+name,{method:'POST',headers:hd,body:JSON.stringify(body||{})});const t=await r.text();let d=null;try{d=JSON.parse(t)}catch(e){d=t}if(!r.ok)throw Error((d&&(d.message||d.error))||t||r.status);return d}
 function toast(s){const t=$('#toast');t.textContent=s;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',4000)}
 
 async function load(){
@@ -194,10 +194,11 @@ async function loadCodes(){
     const link=location.origin+location.pathname+'?code='+encodeURIComponent(s.code);
     return `<div class="codebox"><b>${esc(s.code)}</b> ${s.revoked?'<span class="tag">已停用</span>':''}<p class="meta">${esc(s.advisor||'未命名导师')} · 创建 ${esc((s.created_at||'').slice(0,10))}</p>
       <p class="meta">导师链接：<a href="${link}">${esc(link)}</a></p>
-      <button class="primary" data-enter="${esc(s.code)}">进入</button><button data-copy="${esc(link)}">复制链接</button>${s.revoked?'':`<button data-revoke="${esc(s.id)}">停用</button>`}<button class="danger" data-delcode="${esc(s.id)}">删除</button></div>`;
+      <button class="primary" data-enter="${esc(s.code)}">进入</button><button class="primary" data-enter="${esc(s.code)}">进入论文</button><button data-copy="${esc(link)}">复制链接</button>${s.revoked?'':`<button data-revoke="${esc(s.id)}">停用</button>`}<button class="danger" data-delcode="${esc(s.id)}">删除</button></div>`;
   }).join('')||'<p class="meta">还没有分享码</p>';
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(b.getAttribute('data-copy'));toast('链接已复制')});
   document.querySelectorAll('[data-enter]').forEach(b=>b.onclick=async()=>{code=b.getAttribute('data-enter');localStorage.setItem('thesis-code',code);await load()});
+  document.querySelectorAll('[data-enter]').forEach(b=>b.onclick=()=>{code=b.getAttribute('data-enter');localStorage.setItem('thesis-code',code);load()});
   document.querySelectorAll('[data-delcode]').forEach(b=>b.onclick=async()=>{
     if(!confirm('彻底删除这个分享码？它下面的阶段、评语、文件和上传的文档都会一起删掉，无法恢复。'))return;
     try{await rpc('thesis_share_delete',{p_id:b.getAttribute('data-delcode')});toast('已删除');loadCodes()}catch(e){toast(e.message)}
@@ -611,6 +612,7 @@ tApply();
 render = function(){
   const app=$('#app');
   if(!code||!data){
+    if(session){app.innerHTML='<div id="owner"></div>';renderOwner();return}
     app.innerHTML=`<div class="panel"><h2>输入导师分享码</h2><p class="meta">形如 THESIS-7K2M</p>
       <form id="codeForm"><input id="codeInput" placeholder="THESIS-XXXX" value="${esc(code)}"><button class="primary">打开</button></form>
       <p class="meta" style="margin-top:10px">学生登录 / 注册：<a href="#" id="ownerLink">点这里</a></p></div><div id="owner"></div>`;
