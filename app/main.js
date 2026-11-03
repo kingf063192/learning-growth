@@ -407,7 +407,7 @@ render = function(){
 };
 
 renderCourses = function(){
-  const cs=store.all('course').filter(c=>c.id!=='g-cook');
+  const cs=store.all('course').filter(c=>c.id!=='g-cook').sort((a,b)=>(a.order??99)-(b.order??99));
   let allDone=0,allTot=0;
   cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
   const totalPct=allTot?Math.round(allDone/allTot*100):0;
@@ -477,7 +477,7 @@ ensureDailyStudy = async function(){
 };
 
 renderCourses = function(){
-  const cs=store.all('course').filter(c=>c.id!=='g-cook');
+  const cs=store.all('course').filter(c=>c.id!=='g-cook').sort((a,b)=>(a.order??99)-(b.order??99));
   let allDone=0,allTot=0;
   cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
   const totalPct=allTot?Math.round(allDone/allTot*100):0;
@@ -492,6 +492,7 @@ renderCourses = function(){
       <div class="progress"><i style="width:${p}%;background:${col}"></i></div>
       <p class="meta">${dn}/${ts.length} 步 · ${chs.length} 章${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>
       ${c.id==='g-thesis'?`<p class="meta" style="margin-top:6px">进度以导师协作平台的双向确认为准</p>`:(next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:'')}
+      <div class="cc-ops"><button data-cup="${c.id}" title="上移">↑</button><button data-cdn="${c.id}" title="下移">↓</button><button class="del" data-delc="${c.id}" title="删除">删除</button></div>
     </div>`;
   }).join('');
   return `<div class="panel"><div class="cc-head"><b>总进度</b><span class="cc-pct">${totalPct}%</span></div><div class="progress"><i style="width:${totalPct}%"></i></div><p class="meta">按重要度加权；颜色代表不同科目。</p><div class="toolbar" style="margin-top:8px"><button data-goto="review">复习卡片</button>${action('新增目标','newCourse')}</div></div>
@@ -529,7 +530,7 @@ ensureDailyStudy();
 /* ===== 学习页：默认 5 张卡，避免太长 ===== */
 let showAllCourses=false;
 renderCourses = function(){
-  const cs=store.all('course').filter(c=>c.id!=='g-cook');
+  const cs=store.all('course').filter(c=>c.id!=='g-cook').sort((a,b)=>(a.order??99)-(b.order??99));
   let allDone=0,allTot=0;
   cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
   const totalPct=allTot?Math.round(allDone/allTot*100):0;
@@ -545,6 +546,7 @@ renderCourses = function(){
       <div class="progress"><i style="width:${p}%;background:${col}"></i></div>
       <p class="meta">${dn}/${ts.length} 步 · ${chs.length} 章${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>
       ${c.id==='g-thesis'?`<p class="meta" style="margin-top:6px">进度以导师协作平台的双向确认为准</p>`:(next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:'')}
+      <div class="cc-ops"><button data-cup="${c.id}" title="上移">↑</button><button data-cdn="${c.id}" title="下移">↓</button><button class="del" data-delc="${c.id}" title="删除">删除</button></div>
     </div>`;
   }).join('');
   return `<div class="panel"><div class="cc-head"><b>总进度</b><span class="cc-pct">${totalPct}%</span></div><div class="progress"><i style="width:${totalPct}%"></i></div><p class="meta">按重要度加权；颜色代表不同科目。</p><div class="toolbar" style="margin-top:8px"><button data-goto="review">复习卡片</button>${action('新增目标','newCourse')}</div></div>
@@ -1096,3 +1098,44 @@ async function ensureFinalGoalTasks(){
     await store.put({...r,kind:'task',done:false,start:'',end:''});
   }
 }
+
+document.addEventListener('click',async e=>{
+  const up=e.target.closest&&e.target.closest('[data-cup]');
+  const dn=e.target.closest&&e.target.closest('[data-cdn]');
+  const del=e.target.closest&&e.target.closest('[data-delc]');
+  if(!up&&!dn&&!del)return;
+  e.preventDefault();e.stopImmediatePropagation();
+  const cs=store.all('course').filter(c=>c.id!=='g-cook').sort((a,b)=>(a.order??99)-(b.order??99));
+  if(up||dn){
+    const id=(up||dn).getAttribute(up?'data-cup':'data-cdn');
+    const i=cs.findIndex(c=>c.id===id); if(i<0)return;
+    const j=up?i-1:i+1; if(j<0||j>=cs.length)return;
+    for(let k=0;k<cs.length;k++)if(cs[k].order==null)cs[k].order=k;
+    const a=cs[i], b=cs[j]; const ao=a.order, bo=b.order;
+    await store.put({...a,order:bo}); await store.put({...b,order:ao});
+    render(); try{await cloud.sync()}catch(err){}
+    return;
+  }
+  const id=del.getAttribute('data-delc');
+  const c=store.get(id); if(!c)return;
+  if(!confirm('删除「'+(c.title||id)+'」？它的章节和学习任务也会一起隐藏。'))return;
+  await store.remove(id);
+  for(const t of store.all('task').filter(t=>t.courseId===id))await store.remove(t.id);
+  for(const ch of store.all('chapter').filter(ch=>ch.courseId===id))await store.remove(ch.id);
+  render(); try{await cloud.sync()}catch(err){}
+},true);
+
+/* 内容更新：把新章节/新指导合并进已有数据 */
+(async function syncContent(){
+  try{
+    const list=(content||[]).filter(x=>x.kind==='chapter'||x.kind==='task');
+    for(const r of list){
+      const cur=store.get(r.id);
+      if(!cur){await store.merge([r]);continue}
+      if(r.kind==='chapter'&&r.guide&&!cur.guide){
+        await store.put({...cur,title:r.title,topic:r.topic,guide:r.guide,example:r.example,practice:r.practice});
+      }
+    }
+    render();
+  }catch(e){}
+})();
