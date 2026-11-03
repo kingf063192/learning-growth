@@ -65,16 +65,37 @@ const rpc = (n, b) => api('/rest/v1/rpc/' + n, { method: 'POST', body: b || {} }
 const reload = () => code ? openCode(code) : render();
 
 /* ── 账号 ────────────────────────────────────────────────────── */
-async function auth(signup) {
-  const email = ($('#aEmail') || {}).value?.trim() || '';
-  const pass = ($('#aPass') || {}).value || '';
-  if (!email || !pass) { toast('请填写邮箱和密码'); return; }
+async function doAuth(email, pass, signup) {
+  email = String(email || '').trim(); pass = String(pass || '');
+  if (!email || !pass) { toast('请填写邮箱和密码'); return false; }
   try {
     const d = await api('/auth/v1/' + (signup ? 'signup' : 'token?grant_type=password'), { method: 'POST', anon: true, body: { email, password: pass } });
-    if (!d.access_token) { toast('注册成功，请先点邮箱里的确认链接，再回来登录'); return; }
-    session = d; localStorage.setItem(SKEY, JSON.stringify(d));
-    await loadCodes(); render(); toast('登录成功，已进入学生端');
-  } catch (e) { toast(e.message); }
+    if (!d.access_token) { toast('注册成功，请先点邮箱里的确认链接，再回来登录'); return false; }
+    session = d;
+    localStorage.setItem(SKEY, JSON.stringify(d));
+    /* 登录后统一回到学生端：丢掉 URL 上的 ?code，否则会被锁在导师端 */
+    urlCode = ''; code = ''; data = null; manage = false; panel = '';
+    openEdits.clear(); openComments.clear();
+    history.replaceState(null, '', location.pathname);
+    await loadCodes();
+    closeModal();
+    render();
+    toast('已登录，进入学生端');
+    return true;
+  } catch (e) { toast(e.message); return false; }
+}
+function auth(signup) { return doAuth($('#aEmail')?.value, $('#aPass')?.value, signup); }
+/* 登录窗口：入口页用内嵌表单，导师端用这个弹窗（导师本人想切回学生端时用） */
+function loginModal() {
+  openModal(`<h3>学生登录</h3>
+    <p class="meta">登录后进入学生端，管理邀请码和阶段。导师不需要登录，直接用邀请链接打开就行。</p>
+    <label>邮箱</label><input id="mEmail" type="email" autocomplete="username" placeholder="you@example.com">
+    <label>密码</label><input id="mPass" type="password" autocomplete="current-password" placeholder="至少 6 位">
+    <div class="acts"><button class="primary" id="mLogin">登录</button><button id="mSignup">注册</button></div>
+    <div class="acts"><button id="mCancel">取消</button></div>`);
+  $('#mLogin').onclick = () => doAuth($('#mEmail').value, $('#mPass').value, false);
+  $('#mSignup').onclick = () => doAuth($('#mEmail').value, $('#mPass').value, true);
+  $('#mCancel').onclick = closeModal;
 }
 function logout() {
   session = null;
@@ -311,30 +332,30 @@ async function saveAux(refs, logs) {
   await reload();
 }
 function researchPanels() {
-  const refs = refsOf(), logs = logsOf(), canEdit = isStudent();
+  const refs = refsOf(), logs = logsOf();
   return `<details class="panel" id="refPanel"><summary>文献库 · ${refs.length}</summary>
-    ${canEdit ? `<div class="form">
+    <div class="form">
       <div class="form-row"><input id="rA" placeholder="作者 / 年份"><input id="rD" placeholder="DOI 或期刊"></div>
       <input id="rT" placeholder="标题">
       <textarea id="rC" placeholder="一句话结论 / 用在哪一节"></textarea>
       <button class="primary" id="rAdd">加入文献库</button>
-    </div>` : '<p class="meta">导师端只读。</p>'}
+    </div>
     ${refs.map((r, i) => `<div class="codebox"><b>${esc(r.t || '')}</b>
       <p class="meta">${esc(r.a || '')}${r.d ? ' · ' + esc(r.d) : ''}</p>
       ${r.c ? `<p>${esc(r.c)}</p>` : ''}
-      ${canEdit ? `<button class="danger" data-refdel="${i}">删除</button>` : ''}</div>`).join('') || '<p class="meta">还没有文献</p>'}
+      <button class="danger" data-refdel="${i}">删除</button></div>`).join('') || '<p class="meta">还没有文献，学生和导师都可以加。</p>'}
   </details>
   <details class="panel" id="logPanel"><summary>实验记录 · ${logs.length}</summary>
-    ${canEdit ? `<div class="form">
+    <div class="form">
       <div class="form-row"><input id="lD" type="date" value="${todayStr()}"><input id="lB" placeholder="批次 / 组别"></div>
       <textarea id="lP" placeholder="参数与条件（温度、时间、转速…）"></textarea>
       <textarea id="lR" placeholder="结果与异常"></textarea>
       <button class="primary" id="lAdd">记一笔</button>
-    </div>` : '<p class="meta">导师端只读。</p>'}
+    </div>
     ${logs.map((r, i) => `<div class="codebox"><b>${esc(r.d || '')} ${esc(r.b || '')}</b>
       ${r.p ? `<p class="meta">参数：${esc(r.p)}</p>` : ''}
       ${r.r ? `<p>${esc(r.r)}</p>` : ''}
-      ${canEdit ? `<button class="danger" data-logdel="${i}">删除</button>` : ''}</div>`).join('') || '<p class="meta">还没有记录</p>'}
+      <button class="danger" data-logdel="${i}">删除</button></div>`).join('') || '<p class="meta">还没有记录，学生和导师都可以记。</p>'}
   </details>
   <details class="panel"><summary>导出阶段报告</summary>
     <p class="meta">导出 Markdown：每个阶段的清单与勾选、双方确认状态、修改与批注、评语、文献库、实验记录。可直接发给导师或用于中期检查。</p>
@@ -476,6 +497,7 @@ function mainView() {
       <span class="rolebadge ${stu ? 'owner' : 'advisor'}">${stu ? '学生端' : '导师端'}</span>
       <span class="meta">${stu ? '已登录：' + esc(session?.user?.email || '') : '邀请码进入 · 无需登录'}</span>
       <span class="spacer"></span>
+      ${stu ? '' : '<button class="linkbtn" id="stuLogin">学生登录</button>'}
       <button class="linkbtn" id="exitBtn">${stu ? '退出登录' : '返回'}</button>
     </div>
     <div class="theme-bar"><span class="lab">主题色</span>${THEMES.map(([k, , c]) => `<button class="sw ${themeKey() === k ? 'on' : ''}" data-theme="${k}" style="background:${c}" aria-label="主题${k}"></button>`).join('')}</div>
@@ -504,6 +526,7 @@ function mainView() {
   <details class="panel"><summary>怎么用</summary>
     <p class="meta">学生登录后生成邀请码，把“导师链接”发给导师。导师打开链接永远是导师端，即使这台浏览器登录过学生账号。</p>
     <p class="meta">每个阶段要「学生确认」和「导师确认」都完成才算通过，下一阶段才解锁。清单条目两边都能勾选、修改和批注，改动会留下痕迹。</p>
+    <p class="meta">文献库和实验记录两边都能加、都能删。导师端右上角有「学生登录」，学生本人用导师链接打开时可以从那里登录切回学生端。</p>
   </details>`;
 }
 
@@ -559,6 +582,7 @@ function stageEditor(stage) {
 function bindMain() {
   $('#exitBtn').onclick = () => { if (isStudent()) logout(); else goBack(); };
   $('#rf').onclick = reload;
+  const sl = $('#stuLogin'); if (sl) sl.onclick = loginModal;
   document.querySelectorAll('[data-theme]').forEach(b => { b.onclick = () => setTheme(b.dataset.theme); });
   const mc = $('#myCodes'); if (mc) mc.onclick = () => { panel = panel === 'codes' ? '' : 'codes'; render(); };
   const mg = $('#mg'); if (mg) mg.onclick = () => { manage = !manage; render(); };

@@ -333,11 +333,11 @@ function renderCourses() {
       <div class="progress"><i style="width:${p.percent}%"></i></div>
       <p class="cc-stat">已完成 ${p.done} / ${p.total} 章（加权 ${p.percent}%）${thesis ? ' · 论文只在论文平台看任务' : ''}</p>
       <p class="cc-next">${thesis ? '下一步：按 36 周节奏推进，任务在论文平台' : next ? '下一步：' + esc(chapterOf(next)?.title || next.title) + ' · ' + esc(chapterOf(next)?.topic || '') : '这门课的任务都完成了'}</p>
-      ${thesis ? '' : action('编辑目标', 'editCourse', c.id)}
+      ${thesis ? action('进入论文平台 →', 'openThesis', '', 'primary') : action('编辑目标', 'editCourse', c.id)}
     </article>`;
   }).join('');
   return `<div class="toolbar">
-      ${action('预览重新排期', 'preview', '', 'primary')}${action('新增课程 / 目标', 'newCourse')}
+      ${action('预览重新排期', 'preview', '', 'primary')}${action('新增课程 / 目标', 'newCourse')}${action('论文平台 ↗', 'openThesis')}
       <span class="meta">进度条按章节重要度（1–5 星）加权</span>
     </div>
     ${settings().confirmed ? '' : `<div class="notice"><b>先确认学期</b><p>学期起点会影响周次与固定日程。</p>${action('开始确认', 'onboard', '', 'primary')}</div>`}
@@ -399,6 +399,11 @@ function renderSettings() {
       <p>每天 ${s.capacity} 分钟，休息 ${s.break} 分钟。课程时间未知时明确显示“推定”。</p>
       <p class="meta">每天自动补 ${s.dailyFill} 条学习任务；作业只显示 7 天内到期的。</p>
       ${action('重新确认学期', 'onboard')}
+    </div>
+    <div class="panel"><h2>论文协作平台</h2>
+      <p class="meta">和导师共用一个邀请码：导师免登录、用你发的链接打开就是导师端；你自己用邮箱密码登录就是学生端。</p>
+      <div class="toolbar">${action('进入论文平台', 'openThesis', '', 'primary')}</div>
+      <p class="meta">登录窗口在论文平台里：学生本人用导师链接打开时，点右上角「学生登录」也能切回学生端。</p>
     </div>
     <div class="panel"><h2>iPhone / iPad 安装</h2><ol><li>用 Safari 打开部署后的网站。</li><li>点“分享”。</li><li>选择“添加到主屏幕”。</li><li>从主屏幕图标打开；首次联网后即可离线启动。</li></ol></div>
     <div class="panel"><h2>同步冲突</h2>
@@ -571,6 +576,12 @@ async function handle(name, key) {
     }
     case 'logout': if (confirm('退出将清除本机此账号缓存（含待同步修改）。继续？')) { await cloud.logout(); location.reload(); } break;
     case 'reseed': await reseedData(); break;
+    case 'openThesis': {
+      const u = new URL('./thesis/', location.href).href;
+      const w = window.open(u, '_blank');
+      if (!w) location.href = u;
+      break;
+    }
     case 'setTheme': { const k = applyTheme(key); await putSetting({ theme: k }); render(); break; }
     case 'scheduleSettings': {
       const s = settings();

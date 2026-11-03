@@ -1,4 +1,4 @@
-const VERSION='growth-shell-v7';
+const VERSION='growth-shell-v8';
 const SHELL=['./','./index.html','./app/main.js','./app/core.js','./app/store.js','./app/cloud.js','./app/config.js','./app/style.css','./app/content.json','./manifest.webmanifest','./assets/apple-touch-icon.png','./assets/icon-192.png','./assets/icon-512.png','./assets/maskable-512.png','./thesis/','./thesis/index.html','./thesis/app.js'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(VERSION).then(c=>c.addAll(SHELL))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('growth-shell-')&&k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
