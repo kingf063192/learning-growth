@@ -585,3 +585,133 @@ document.addEventListener('click',e=>{
   tApply();render();
 },true);
 tApply();
+
+/* ===== 单页版：不分子页面，全部折叠在同一个页面 ===== */
+render = function(){
+  const app=$('#app');
+  if(!code||!data){
+    app.innerHTML=`<div class="panel"><h2>输入导师分享码</h2><p class="meta">形如 THESIS-7K2M</p>
+      <form id="codeForm"><input id="codeInput" placeholder="THESIS-XXXX" value="${esc(code)}"><button class="primary">打开</button></form>
+      <p class="meta" style="margin-top:10px">学生登录 / 注册：<a href="#" id="ownerLink">点这里</a></p></div><div id="owner"></div>`;
+    $('#codeForm').onsubmit=e=>{e.preventDefault();code=$('#codeInput').value.trim().toUpperCase();load()};
+    const ol=$('#ownerLink');if(ol)ol.onclick=e=>{e.preventDefault();renderOwner()};
+    return;
+  }
+  if(!role){
+    app.innerHTML=`<div class="panel"><h2>你是谁？</h2>
+      <div class="row-actions" style="flex-direction:column">
+        <button class="primary" data-role="owner" style="width:100%">我是学生（论文作者本人）</button>
+        <button data-role="advisor" style="width:100%;margin-top:8px">我是导师（查看并确认）</button>
+      </div>
+      <p class="meta" style="margin-top:10px">学生需要登录：<a href="#" id="toLogin">学生登录 / 注册</a></p></div>`;
+    document.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{role=b.getAttribute('data-role');localStorage.setItem('thesis-role',role);render()});
+    const tl=$('#toLogin');if(tl)tl.onclick=e=>{e.preventDefault();role='owner';localStorage.setItem('thesis-role','owner');code='';data=null;localStorage.removeItem('thesis-code');render()};
+    return;
+  }
+  const sm=stageMap(), defs=defsOf(), total=defs.length;
+  const doneN=defs.filter(s=>stageDone(sm,s.id)).length, pct=total?Math.round(doneN/total*100):0;
+  const cm=(data.comments||[]).filter(c=>!c.task_id), fs=(data.files||[]);
+  const loginPanel=(role==='owner'&&!session)?`<div class="panel"><h2>学生登录</h2><p class="meta">登录后才能生成分享码、管理阶段。</p>
+    <div class="form"><input id="qEmail" placeholder="邮箱" type="email"><input id="qPass" placeholder="密码" type="password"><button class="primary" id="qLogin">登录</button><button id="qSignup">注册</button></div></div>`:'';
+  app.innerHTML=`${loginPanel}
+  <div class="panel">
+    <div class="rolebar"><span class="rolebadge ${role}">${role==='owner'?'学生端':'导师端'}</span><span class="meta">${role==='owner'?'学生（论文作者）':'导师（查看与确认）'}</span><button class="link" id="switchRole">切换身份</button></div>
+    <div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <p class="meta">${doneN}/${total} 阶段双方确认 · 都确认后进入下一阶段</p>
+    <div class="manage">${role==='owner'?`<button id="mgBtn">${manage?'完成管理':'管理阶段'}</button><button id="addStage">＋ 新增阶段</button>`:''}<button id="refresh">刷新</button></div>
+  </div>
+  <div id="stages-grid">${defs.map((st,i)=>stageCard(st,i,sm)).join('')}</div>
+  <details class="panel"><summary>文件 · ${fs.length}</summary>
+    ${fs.length?fs.map(f=>`<p><a href="${config.url}/storage/v1/object/public/thesis-files/${encodeURI(f.path)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a> <span class="meta">${esc(f.uploaded_by||'')} · ${esc((f.created_at||'').slice(0,10))}</span></p>`).join(''):'<p class="meta">还没有文件；到阶段里上传。</p>'}</details>
+  <details class="panel"><summary>留言板 · ${cm.length}</summary>
+    ${cm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有留言</p>'}
+    <div class="form"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></details>
+  <details class="panel"><summary>AI 助手</summary>
+    <p class="meta">复制状态发给 AI → 粘回 JSON → 一键更新阶段/清单/批注。不接 API，不产生费用。</p>
+    <div class="row-actions"><button id="aiCopy" class="primary">复制当前状态</button><button id="aiPaste">导入 AI 结果</button></div>
+    <textarea id="aiBox" class="aiarea" placeholder="AI 返回的 thesis-update JSON"></textarea></details>
+  <details class="panel"><summary>说明（流程 / 投稿策略）</summary>${INFO_HTML}</details>
+  ${tPicker()}`;
+
+  const ql=$('#qLogin');if(ql)ql.onclick=()=>doAuth(false);
+  const qs=$('#qSignup');if(qs)qs.onclick=()=>doAuth(true);
+  const sr=$('#switchRole');if(sr)sr.onclick=()=>{localStorage.removeItem('thesis-role');role='';render()};
+  const rf=$('#refresh');if(rf)rf.onclick=()=>load();
+  const mg=$('#mgBtn');if(mg)mg.onclick=()=>{manage=!manage;render()};
+  const ad=$('#addStage');if(ad)ad.onclick=()=>stageModal(null);
+  document.querySelectorAll('[data-seup],[data-sedn],[data-sedel]').forEach(b=>b.onclick=async()=>{
+    const defs2=defsOf();const id=b.getAttribute('data-seup')||b.getAttribute('data-sedn')||b.getAttribute('data-sedel');
+    const i=defs2.findIndex(x=>x.id===id);if(i<0)return;
+    if(b.hasAttribute('data-sedel')){if(!confirm('删除阶段？'))return;defs2.splice(i,1)}
+    else{const j=b.hasAttribute('data-seup')?i-1:i+1;if(j<0||j>=defs2.length)return;[defs2[i],defs2[j]]=[defs2[j],defs2[i]]}
+    try{await saveDefs(defs2);toast('已更新')}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-st]').forEach(el=>el.onchange=async()=>{
+    const sid=el.dataset.st,j=el.dataset.j;const cur2={...(checksOf(stageMap(),sid))};
+    const old=cur2[j];const obj=typeof old==='object'&&old?{...old}:{};obj.done=el.checked;cur2[j]=obj;
+    try{await stageSet(sid,cur2,null,null)}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-ed]').forEach(el=>el.onclick=()=>{const k=el.getAttribute('data-ed');openEdits.has(k)?openEdits.delete(k):openEdits.add(k);render()});
+  document.querySelectorAll('[data-ec]').forEach(el=>el.onclick=()=>{openEdits.delete(el.getAttribute('data-ec'));render()});
+  document.querySelectorAll('[data-es]').forEach(el=>el.onclick=async()=>{
+    const k=el.getAttribute('data-es');const [sid,j]=k.split(':');
+    const txt=document.querySelector(`[data-et="${k}"]`).value.trim();
+    const note=document.querySelector(`[data-en="${k}"]`).value.trim();
+    const cur2={...(checksOf(stageMap(),sid))},old=cur2[j];
+    const obj=typeof old==='object'&&old?{...old}:{done:!!old};
+    const st2=defsOf().find(x=>x.id===sid);const orig=st2?(st2.items[+j]||''):'';
+    const oldText=(obj.text||'').trim()||orig,newText=txt||orig;
+    if(newText!==oldText)obj.history=(obj.history||[]).concat([{by:roleName(),at:new Date().toISOString(),from:oldText,to:newText}]).slice(-10);
+    obj.text=txt;obj.note=note;cur2[j]=obj;
+    try{await stageSet(sid,cur2,null,null);openEdits.delete(k);toast('已保存')}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-sok]').forEach(el=>el.onclick=async()=>{
+    const [sid,who]=el.getAttribute('data-sok').split(':');const s=stageMap()[sid]||{};
+    try{ if(who==='owner')await stageSet(sid,s.checks||{},!(s.owner_ok),null); else await stageSet(sid,s.checks||{},null,!(s.advisor_ok)); }catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-scmt]').forEach(el=>el.onclick=()=>{const id=el.getAttribute('data-scmt');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
+  document.querySelectorAll('[data-send]').forEach(el=>el.onclick=async()=>{
+    const id=el.getAttribute('data-send');const body=document.querySelector(`[data-body="${id}"]`).value.trim();
+    if(!body)return;try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:authorName(),p_body:body});load()}catch(e){toast(e.message)}
+  });
+  document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
+    const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
+    if(f.size>10*1024*1024){toast('文件超过 10 MB');return}
+    const name=authorName();const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
+    try{
+      const r=await fetch(config.url+'/storage/v1/object/thesis-files/'+encodeURI(path),{method:'POST',headers:{apikey:config.key,Authorization:'Bearer '+config.key,'Content-Type':f.type||'application/octet-stream'},body:f});
+      if(!r.ok)throw Error('上传失败');
+      await rpc('thesis_file_add',{p_code:code,p_task_id:id,p_name:f.name,p_path:path,p_by:name});toast('已上传');load();
+    }catch(e){toast(e.message)}
+  });
+  const gs=$('#gbSend');if(gs)gs.onclick=async()=>{
+    const b=$('#gbBody').value.trim();if(!b)return;
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:null,p_author:authorName(),p_body:b});$('#gbBody').value='';load()}catch(e){toast(e.message)}
+  };
+  const ac=$('#aiCopy');if(ac)ac.onclick=()=>{
+    const sm2=stageMap();
+    const payload={type:'thesis-state',stages:defsOf().map(s=>({id:s.id,title:s.t,items:s.items,checks:sm2[s.id]?.checks||{}}))};
+    const txt='请把下面 JSON 的阶段/清单/交付物写得更具体可执行，只输出 thesis-update JSON：\n'+JSON.stringify(payload,null,1);
+    $('#aiBox').value=txt;try{navigator.clipboard.writeText(txt);toast('已复制')}catch(e){toast('已生成，手动复制')}
+  };
+  const ap2=$('#aiPaste');if(ap2)ap2.onclick=async()=>{
+    try{
+      const raw=$('#aiBox').value.replace(/^[\s\S]*?(\{)/,'$1');const o=JSON.parse(raw);
+      if(Array.isArray(o.stages)&&o.stages.length){
+        const dd=defsOf();o.stages.forEach(ns=>{const i=dd.findIndex(x=>x.id===ns.id);
+          const obj={id:ns.id,t:ns.title||ns.t,d:ns.d||'',eta:ns.eta||'',out:ns.out||'',acc:ns.acc||'',items:ns.items||[]};
+          if(i>=0)dd[i]={...dd[i],...obj};else dd.push(obj)});
+        await saveDefs(dd);
+      }
+      if(Array.isArray(o.items))for(const it of o.items){
+        const cur2={...(checksOf(stageMap(),it.stage_id))};const old=cur2[it.index];
+        const obj=typeof old==='object'&&old?{...old}:{done:!!old};
+        if(it.text)obj.text=it.text;if(it.note)obj.note=it.note;cur2[it.index]=obj;
+        await rpc('thesis_stage_set',{p_code:code,p_stage:it.stage_id,p_checks:cur2,p_owner:null,p_advisor:null});
+      }
+      toast('已导入');await load();
+    }catch(e){toast('导入失败：'+e.message)}
+  };
+};
+load();
