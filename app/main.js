@@ -491,7 +491,7 @@ renderCourses = function(){
       <div class="cc-head"><b>${esc(c.title)}</b><span class="cc-pct" style="color:${col}">${p}%</span></div>
       <div class="progress"><i style="width:${p}%;background:${col}"></i></div>
       <p class="meta">${dn}/${ts.length} 步 · ${chs.length} 章${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>
-      ${next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:''}
+      ${c.id==='g-thesis'?`<p class="meta" style="margin-top:6px">进度以导师协作平台的双向确认为准</p>`:(next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:'')}
     </div>`;
   }).join('');
   return `<div class="panel"><div class="cc-head"><b>总进度</b><span class="cc-pct">${totalPct}%</span></div><div class="progress"><i style="width:${totalPct}%"></i></div><p class="meta">按重要度加权；颜色代表不同科目。</p><div class="toolbar" style="margin-top:8px"><button data-goto="review">复习卡片</button>${action('新增目标','newCourse')}</div></div>
@@ -544,7 +544,7 @@ renderCourses = function(){
       <div class="cc-head"><b>${esc(c.title)}</b><span class="cc-pct" style="color:${col}">${p}%</span></div>
       <div class="progress"><i style="width:${p}%;background:${col}"></i></div>
       <p class="meta">${dn}/${ts.length} 步 · ${chs.length} 章${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>
-      ${next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:''}
+      ${c.id==='g-thesis'?`<p class="meta" style="margin-top:6px">进度以导师协作平台的双向确认为准</p>`:(next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:'')}
     </div>`;
   }).join('');
   return `<div class="panel"><div class="cc-head"><b>总进度</b><span class="cc-pct">${totalPct}%</span></div><div class="progress"><i style="width:${totalPct}%"></i></div><p class="meta">按重要度加权；颜色代表不同科目。</p><div class="toolbar" style="margin-top:8px"><button data-goto="review">复习卡片</button>${action('新增目标','newCourse')}</div></div>
