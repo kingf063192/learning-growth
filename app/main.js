@@ -395,3 +395,66 @@ document.addEventListener('click',async e=>{
   const cl=t.closest&&t.closest('[data-fclose]');
   if(cl){e.preventDefault();stopFocus();return}
 },true);
+
+/* ===== 交互整修：学习页清爽 + 行程周课表 + 导航精简 + 每日自动排学习任务 ===== */
+render = function(){
+  const pages={today:['☀','今日'],courses:['▤','学习'],week:['▦','行程'],life:['♡','生活'],rewards:['✧','奖励'],settings:['⚙','设置']};
+  $('#nav').innerHTML=Object.entries(pages).map(([k,[ic,t]])=>`<button class="${page===k?'active':''}" data-page="${k}"><span>${ic}</span> ${t}</button>`).join('');
+  $('#date').textContent=new Date().toLocaleDateString('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+  $('#heading').textContent=(pages[page]||pages.today)[1];
+  $('#sync').textContent=cloud.status;
+  $('#main').innerHTML=({today:renderToday,week:renderWeek,courses:renderCourses,review:renderReview,life:renderLife,rewards:renderRewards,settings:renderSettings})[page]();
+};
+
+renderCourses = function(){
+  const cs=store.all('course');
+  let allDone=0,allTot=0;
+  cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
+  const totalPct=allTot?Math.round(allDone/allTot*100):0;
+  const cards=cs.map(c=>{
+    const ts=tasks().filter(t=>t.courseId===c.id);
+    const p=progress(ts),dn=ts.filter(t=>t.done).length;
+    const chs=store.all('chapter').filter(x=>x.courseId===c.id);
+    const next=ts.filter(t=>!t.done).sort((a,b)=>((a.date||'9999')+(a.start||'99')).localeCompare((b.date||'9999')+(b.start||'99')))[0];
+    return `<div class="panel course-card">
+      <div class="cc-head"><b>${esc(c.title)}</b><span class="cc-pct">${p}%</span></div>
+      <div class="progress"><i style="width:${p}%"></i></div>
+      <p class="meta">${dn}/${ts.length} 步 · ${chs.length} 章${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>
+      ${next?action('下一步 →','detail',next.id,'primary'):''}
+    </div>`;
+  }).join('');
+  return `<div class="panel"><div class="cc-head"><b>总进度</b><span class="cc-pct">${totalPct}%</span></div><div class="progress"><i style="width:${totalPct}%"></i></div><p class="meta">按重要度加权：重点章节完成得多，涨得快。</p><div class="toolbar" style="margin-top:8px"><button data-goto="review">复习卡片</button>${action('新增目标','newCourse')}</div></div>
+  <div class="course-list">${cards}</div>
+  ${weightPanel()}`;
+};
+
+renderWeek = function(){
+  const dates=Array.from({length:7},(_,i)=>addDays(week,i));
+  const list=tasks().filter(t=>dates.includes(t.date));
+  const bad=new Set(conflicts(list));
+  const rows=Array.from({length:16},(_,i)=>i+7);
+  return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}<b style="margin-left:auto">${week} — ${addDays(week,6)}</b></div>
+  <div class="week-scroll"><div class="week-grid">
+    <div class="wg-corner"></div>${dates.map((d,i)=>`<div class="wg-head ${d===today()?'today':''}">${['一','二','三','四','五','六','日'][i]}<br><span>${d.slice(5)}</span></div>`).join('')}
+    ${rows.map(h=>`<div class="wg-time">${String(h).padStart(2,'0')}:00</div>${dates.map(d=>`<div class="wg-cell ${d===today()?'today':''}">${list.filter(t=>t.date===d&&t.start&&minutes(t.start)>=h*60&&minutes(t.start)<(h+1)*60).map(t=>`<button class="wg-ev ${t.category==='固定课程'?'fixed':''} ${t.done?'done':''} ${bad.has(t.id)?'conflict':''}" data-action="detail" data-id="${esc(t.id)}" style="height:${Math.max(26,(minutes(t.end||'00:00')-minutes(t.start))*0.85)}px"><b>${esc(t.title)}</b><span>${esc(t.start)}</span></button>`).join('')}</div>`).join('')}`).join('')}
+  </div></div>
+  <p class="meta">左右滑动看整周；点色块看详情。⚠ 表示时间重叠。${list.filter(t=>!t.start).length?'<br>另有 '+list.filter(t=>!t.start).length+' 项时间待定，在今日或学习里看。':''}</p></div>`;
+};
+
+document.addEventListener('click',e=>{
+  const g=e.target.closest&&e.target.closest('[data-goto]');
+  if(g){e.preventDefault();e.stopImmediatePropagation();page=g.getAttribute('data-goto');render();return}
+},true);
+
+async function ensureDailyStudy(){
+  if(!settings().confirmed)return;
+  const todays=tasks().filter(t=>t.date===today()&&t.category!=='固定课程');
+  if(todays.length>=3)return;
+  const cands=tasks().filter(t=>t.category!=='固定课程'&&!t.done&&(!t.date||t.date>today())&&t.chapterId);
+  const wOf=t=>Number(t.weight)||Number(chapter(t)?.weight)||1;
+  cands.sort((a,b)=>wOf(b)-wOf(a)||((a.order||0)-(b.order||0)));
+  const add=cands.slice(0,3-todays.length);
+  for(const t of add)await store.put({...t,date:today(),start:t.start||''});
+  if(add.length){render();try{await cloud.sync()}catch(e){}}
+}
+ensureDailyStudy();
