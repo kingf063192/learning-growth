@@ -1,4 +1,14 @@
 import {config} from './config.js';
+/* 两台设备写入了完全相同的内容时不算冲突：直接采纳云端版本。
+   典型场景：手机和平板同一天各跑一次「每日补任务」，写的是同一条记录、同样的值。 */
+const VOLATILE_KEYS=['version','mutation','dirty','conflict','updatedAt','_baseVersion','_partial'];
+function samePayload(a,b){
+ if(!a||!b)return false;
+ const keys=o=>Object.keys(o).filter(k=>!VOLATILE_KEYS.includes(k)&&o[k]!==undefined).sort();
+ const ka=keys(a),kb=keys(b);
+ if(ka.length!==kb.length||ka.some((k,i)=>k!==kb[i]))return false;
+ return ka.every(k=>JSON.stringify(a[k])===JSON.stringify(b[k]));
+}
 export class Cloud{
  constructor(store,onStatus){this.store=store;this.onStatus=onStatus;this.session=JSON.parse(localStorage.getItem('growth-session')||'null');this.running=false;this.status='本地模式 · 尚未开启跨设备同步';this.generation=0;}
  get enabled(){return !!(config.url&&config.key)}
@@ -14,7 +24,7 @@ export class Cloud{
  async runSync(){if(!this.enabled||!this.session){this.statusSet('本地模式 · 尚未开启跨设备同步');return}if(!navigator.onLine){this.statusSet('离线待同步');return}const generation=this.generation;this.statusSet('同步中');
  try{await this.refresh();if(this.store.db)this.store.records=await this.store.readAll();
  const initialHead=Number(await this.request('/rest/v1/rpc/sync_head',{}));const outgoing=[...this.store.records.filter(x=>x.dirty&&!x.conflict)];
- for(const r of outgoing){if(generation!==this.generation)return;const res=await this.request('/rest/v1/rpc/apply_record',{p_id:r.id,p_kind:r.kind,p_payload:r,p_version:r.version,p_mutation:r.mutation});if(generation!==this.generation)return;const live=this.store.get(r.id);if(live?.mutation!==r.mutation)continue;if(res.conflict)await this.store.transaction([{...r,conflict:res.record}]);else await this.store.transaction([{...res.record.payload,version:res.record.version,dirty:false,mutation:r.mutation}]);}
+ for(const r of outgoing){if(generation!==this.generation)return;const res=await this.request('/rest/v1/rpc/apply_record',{p_id:r.id,p_kind:r.kind,p_payload:r,p_version:r.version,p_mutation:r.mutation});if(generation!==this.generation)return;const live=this.store.get(r.id);if(live?.mutation!==r.mutation)continue;if(res.conflict){const remote=res.conflict;if(samePayload(r,remote.payload))await this.store.transaction([{...remote.payload,version:remote.version,dirty:false,mutation:r.mutation}]);else await this.store.transaction([{...r,conflict:remote}]);}else await this.store.transaction([{...res.record.payload,version:res.record.version,dirty:false,mutation:r.mutation}]);}
  let cursor=this.store.records.length?Number(localStorage.getItem(this.cursorKey)||0):0;const head=outgoing.length?Number(await this.request('/rest/v1/rpc/sync_head',{})):initialHead;
  // No changes: a single numeric response, no table scan/download.
  while(cursor<head){const rows=await this.request('/rest/v1/rpc/sync_changes',{p_after:cursor,p_limit:200});if(generation!==this.generation)return;if(!rows.length)throw Error('同步游标异常，请重试');const changes=[];

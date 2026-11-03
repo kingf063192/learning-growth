@@ -54,6 +54,14 @@ const allTasks = () => store.all('task');
    否则会和 fixed 记录在今日/行程里各画一遍，看起来就是重复。 */
 const isFixedTask = t => !!t && (t.category === '固定课程' || t.source === 'fixed');
 const openTasks = () => allTasks().filter(t => !isFixedTask(t));
+const conflictRows = () => store.records.filter(x => x && x.conflict);
+const stripConflict = r => { const o = { ...r }; delete o.conflict; return o; };
+const shortVal = v => {
+  if (v === undefined) return '—';
+  if (v === null) return 'null';
+  const t = typeof v === 'string' ? v : JSON.stringify(v);
+  return t.length > 90 ? t.slice(0, 87) + '…' : t;
+};
 const courseOf = t => (t?.courseId ? store.get(t.courseId) : null);
 const chapterOf = t => (t?.chapterId ? store.get(t.chapterId) : null);
 
@@ -85,22 +93,27 @@ async function ensureSeed() {
   if (v < 4) {
     /* 1) 旧的 fixed-fN 命名换成新的 fixed-*，避免行程页出现两份日程 */
     for (const f of store.all('fixed').filter(f => !seedIds.has(f.id))) await store.put({ ...f, deleted: true });
-    /* 2) 已有 course 的元数据覆盖成新分类/优先级（保留用户其它字段） */
-    for (const c of content.filter(c => c.kind === 'course')) {
+    /* 2) 已有 course 的元数据覆盖成新分类/优先级（保留用户其它字段；内容没变就不写） */
+    for (const c of content.filter(x => x.kind === 'course')) {
       const cur = store.get(c.id);
-      if (cur) await store.put({
-        ...cur, title: c.title, category: c.category, start: c.start, deadline: c.deadline,
-        frequency: c.frequency, priority: c.priority, thesisOnly: !!c.thesisOnly,
-      });
+      if (!cur) continue;
+      const patch = { title: c.title, category: c.category, start: c.start, deadline: c.deadline, frequency: c.frequency, priority: c.priority, thesisOnly: !!c.thesisOnly };
+      if (Object.keys(patch).some(k => JSON.stringify(cur[k] ?? null) !== JSON.stringify(patch[k] ?? null))) await store.put({ ...cur, ...patch });
     }
     /* 3) 章节：标题/知识点/顺序/权重用新种子覆盖，用户写的学习指导保留 */
-    for (const c of content.filter(c => c.kind === 'chapter')) {
+    for (const c of content.filter(x => x.kind === 'chapter')) {
       const cur = store.get(c.id);
-      if (cur) await store.put({ ...cur, title: c.title, topic: c.topic, order: c.order, weight: c.weight });
+      if (!cur) continue;
+      const patch = { title: c.title, topic: c.topic, order: c.order, weight: c.weight };
+      if (Object.keys(patch).some(k => JSON.stringify(cur[k] ?? null) !== JSON.stringify(patch[k] ?? null))) await store.put({ ...cur, ...patch });
     }
   }
-  /* 4) 固定日程刷新一次（v5 给「心理医生复诊」补了 soft 标记，请假去不算冲突） */
-  for (const f of content.filter(c => c.kind === 'fixed')) await store.put({ ...f });
+  /* 4) 固定日程：内容有变化才写（v5 给「心理医生复诊」补了 soft 标记，请假去不算冲突） */
+  const FIXED_KEYS = ['wd', 'slot', 'start', 'end', 'title', 'cat', 'note', 'from', 'to', 'soft'];
+  for (const f of content.filter(c => c.kind === 'fixed')) {
+    const cur = store.get(f.id);
+    if (!cur || FIXED_KEYS.some(k => JSON.stringify(cur[k] ?? null) !== JSON.stringify(f[k] ?? null))) await store.put({ ...f });
+  }
   /* 5) 清掉旧版 fixedWeek() 生成的「固定课程任务」——它们会和 fixed 记录重复渲染 */
   for (const t of store.all('task')) {
     if (t.category === '固定课程' && /^fixed-f\d+:/.test(String(t.id || ''))) await store.put({ ...t, deleted: true });
@@ -153,6 +166,13 @@ async function ensureChapterTasks() {
 async function refreshAuto() { await ensureSeed(); await ensureChapterTasks(); await ensureHomework(); await ensureDaily(); }
 
 /* ── 首页：今日 ───────────────────────────────────────────── */
+function conflictBanner() {
+  const n = conflictRows().length;
+  if (!n) return '';
+  return `<section class="panel notice"><b>有 ${n} 条同步冲突待处理</b>
+    <p>两台设备同时改了同一条记录。两版都已经保存在本机，选一个作为最终版本就好。</p>
+    <div class="toolbar">${action('去处理', 'conflictList', '', 'primary')}</div></section>`;
+}
 function todayItems() {
   const d = today();
   const s = settings();
@@ -233,7 +253,7 @@ function renderToday() {
       <div class="focus-actions"><button class="primary" data-action="newTask">＋ 添加任务</button></div>
     </section>`;
 
-  return `${focusCard}
+  return `${conflictBanner()}${focusCard}
   <section class="panel">
     <div class="toolbar"><h2>今天要做的</h2><button data-action="newTask">＋ 添加</button></div>
     <p class="meta">${doneCount} / ${list.length} 项完成 · 固定课程不可拆不可删，其它任务可以 × 拆成两步或删除。</p>
@@ -406,8 +426,9 @@ function renderSettings() {
       <p class="meta">登录窗口在论文平台里：学生本人用导师链接打开时，点右上角「学生登录」也能切回学生端。</p>
     </div>
     <div class="panel"><h2>iPhone / iPad 安装</h2><ol><li>用 Safari 打开部署后的网站。</li><li>点“分享”。</li><li>选择“添加到主屏幕”。</li><li>从主屏幕图标打开；首次联网后即可离线启动。</li></ol></div>
-    <div class="panel"><h2>同步冲突</h2>
-      ${store.records.filter(x => x.conflict).map(r => `<div class="row"><div class="body">${esc(r.title || r.id)}<p class="meta">本机和云端同时修改，两版都已保留。</p>${action('查看两版并处理', 'resolve', r.id)}</div></div>`).join('') || empty('暂无待处理冲突')}
+    <div class="panel"><h2>同步冲突${conflictRows().length ? ' · ' + conflictRows().length : ''}</h2>
+      ${conflictRows().map(r => `<div class="row"><div class="body">${esc(r.title || r.id)}<p class="meta">${esc(r.kind || '')} · 本机和云端都改过，两版都已保留在本机。</p>${action('查看两版并处理', 'resolve', r.id)}</div></div>`).join('') || empty('暂无待处理冲突')}
+      ${conflictRows().length ? `<div class="toolbar">${action('全部采用云端版本', 'useRemoteAll')}${action('全部保留本机', 'useLocalAll')}</div>` : ''}
     </div>
   </div></div>`;
 }
@@ -642,13 +663,52 @@ async function handle(name, key) {
     }
 
     /* 同步冲突 */
-    case 'resolve': modal('处理同时修改', `<h3>本机版本</h3><pre>${esc(JSON.stringify(t, null, 2))}</pre><h3>云端版本</h3><pre>${esc(JSON.stringify(t.conflict.payload, null, 2))}</pre>
-      ${action('采用云端版本', 'useRemote', key)}${t.conflict.payload.deleted ? '' : action('保留本机修改', 'useLocal', key)}`); break;
+    case 'conflictList': {
+      const rows = conflictRows();
+      if (!rows.length) { toast('没有待处理冲突'); break; }
+      modal(`同步冲突 · ${rows.length}`, `<p class="meta">两台设备同时改了同一条记录。两版都已经保存在本机，选一个作为最终版本即可。</p>
+        ${rows.map(r => `<div class="row"><div class="body"><h3>${esc(r.title || r.id)}</h3>
+          <p class="meta">${esc(r.kind || '')} · 本机 v${esc(r.version || 0)} ／ 云端 v${esc(r.conflict?.version ?? 0)}</p></div>
+          ${action('对比并处理', 'resolve', r.id)}</div>`).join('')}
+        <div class="toolbar">${action('全部采用云端版本', 'useRemoteAll')}${action('全部保留本机', 'useLocalAll')}</div>`);
+      break;
+    }
+    case 'resolve': {
+      const remote = (t && t.conflict && t.conflict.payload) || {};
+      const local = t || {};
+      const skip = ['conflict', 'dirty', '_partial', 'version', 'mutation', 'updatedAt', '_baseVersion'];
+      const keys = [...new Set([...Object.keys(local), ...Object.keys(remote)])].filter(k => !skip.includes(k));
+      const diff = keys.filter(k => JSON.stringify(local[k]) !== JSON.stringify(remote[k]));
+      modal('对比两版', `<p><b>${esc(local.title || local.id)}</b> <span class="meta">${esc(local.kind || '')}</span></p>
+        <p class="meta">本机 v${esc(local.version || 0)} ／ 云端 v${esc(t.conflict?.version ?? 0)}${remote.deleted ? ' · 云端已删除' : ''}</p>
+        ${diff.length
+          ? `<ul class="steps">${diff.map(k => `<li><b>${esc(k)}</b>：本机 ${esc(shortVal(local[k]))} ／ 云端 ${esc(shortVal(remote[k]))}</li>`).join('')}</ul>`
+          : '<p class="meta">两版内容其实一样，选哪个都行。</p>'}
+        <div class="toolbar">${action('采用云端版本', 'useRemote', key, 'primary')}${remote.deleted ? '' : action('保留本机修改', 'useLocal', key)}</div>`);
+      break;
+    }
     case 'useRemote': case 'useLocal': {
-      download(t, '同步冲突备份-' + hash(key) + '.json');
       const remote = t.conflict;
-      await store.transaction([name === 'useRemote' ? { ...remote.payload, version: remote.version, dirty: false } : { ...t, version: remote.version, conflict: undefined, dirty: true, mutation: id() }]);
-      closeModal(); await cloud.sync(); render(); break;
+      download(t, '同步冲突备份-' + hash(key) + '.json');
+      const next = name === 'useRemote'
+        ? stripConflict({ ...remote.payload, id: t.id, version: remote.version, dirty: false, mutation: id() })
+        : stripConflict({ ...t, version: remote.version, dirty: true, mutation: id() });
+      await store.transaction([next]);
+      closeModal(); await cloud.sync(); render(); toast('已处理这条冲突');
+      break;
+    }
+    case 'useRemoteAll': case 'useLocalAll': {
+      const rows = conflictRows();
+      if (!rows.length) { toast('没有待处理冲突'); break; }
+      const toCloud = name === 'useRemoteAll';
+      if (!confirm(`把 ${rows.length} 条冲突全部采用「${toCloud ? '云端' : '本机'}」版本？会先下载一份两版备份。`)) break;
+      for (const r of rows) download(r, '同步冲突备份-' + hash(r.id) + '.json');
+      const next = rows.map(r => toCloud
+        ? stripConflict({ ...r.conflict.payload, id: r.id, version: r.conflict.version, dirty: false, mutation: id() })
+        : stripConflict({ ...r, version: r.conflict.version, dirty: true, mutation: id() }));
+      await store.transaction(next);
+      closeModal(); await cloud.sync(); render(); toast(`已处理 ${rows.length} 条冲突`);
+      break;
     }
 
     default: break;
@@ -865,7 +925,7 @@ document.addEventListener('pointercancel', () => { if (drag) { clearTimeout(drag
 
 /* 顶部与全局 */
 $('#close').onclick = closeModal;
-$('#sync').onclick = () => handle('sync');
+$('#sync').onclick = () => (conflictRows().length ? handle('conflictList') : handle('sync'));
 window.addEventListener('online', () => cloud.sync().then(render));
 window.addEventListener('offline', () => cloud.statusSet(cloud.session ? '离线待同步' : '本地模式 · 离线可用'));
 window.addEventListener('hashchange', () => {
