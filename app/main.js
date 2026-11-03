@@ -1145,3 +1145,37 @@ document.addEventListener('click',async e=>{
     render();
   }catch(e){}
 })();
+
+/* ===== 主题色 ===== */
+const THEMES=[
+  ['玫瑰','#b43b70','#f9e9ef'],
+  ['天蓝','#2f6fb3','#e8f1fb'],
+  ['青绿','#1f7a52','#e6f6ee'],
+  ['葡萄','#6b4bb8','#f0ebfb'],
+  ['焦糖','#b8621f','#fbeee2'],
+  ['墨黑','#2f3337','#eef0f2']
+];
+function applyTheme(){
+  let i=Number(localStorage.getItem('theme')||0);
+  if(!THEMES[i])i=0;
+  const t=THEMES[i];
+  document.documentElement.style.setProperty('--pink',t[1]);
+  document.documentElement.style.setProperty('--soft',t[2]);
+  document.documentElement.style.setProperty('--accent',t[1]);
+}
+function themePanel(){
+  const cur=Number(localStorage.getItem('theme')||0);
+  return `<details class="panel"><summary>主题色</summary>
+    <div class="swatches">${THEMES.map((t,i)=>`<button class="sw ${i===cur?'on':''}" data-theme="${i}" title="${t[0]}" style="background:${t[1]}"></button>`).join('')}</div>
+    <p class="meta" style="margin-top:8px">${THEMES[cur]?THEMES[cur][0]:'玫瑰'} · 只影响这台设备的显示</p></details>`;
+}
+const origSettings=renderSettings;
+renderSettings=function(){return origSettings()+themePanel()};
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-theme]');
+  if(!b)return;
+  e.preventDefault();e.stopImmediatePropagation();
+  localStorage.setItem('theme',b.getAttribute('data-theme'));
+  applyTheme();render();
+},true);
+applyTheme();
