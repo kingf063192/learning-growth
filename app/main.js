@@ -193,3 +193,38 @@ renderCourses=function(){
 
 /* 启动：补作业、补今日 */
 (async()=>{try{await ensureHW()}catch(e){};try{await ensureToday()}catch(e){};try{render()}catch(e){}})();
+
+/* ===== 作业管理：增删 ===== */
+const COURSE_OPTS=[['g-inorg','无机化学'],['g-org','有机化学'],['g-food','食品工艺学'],['extra-3','中国名菜'],['extra-4','中国名点'],['extra-0','无机实验'],['extra-1','文献检索'],['extra-2','创新创业'],['g-online','学习通网课']];
+function hwPanel(){
+  const list=tasks().filter(x=>isHW(x)&&!x.done).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,20);
+  return `<details class="panel"><summary>作业管理</summary>
+    <div class="kcal">添加：选课程、写标题、选截止日。删除后不可恢复。</div>
+    <div class="add" style="margin-top:8px">
+      <select id="hwCourse" style="width:120px">${COURSE_OPTS.map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select>
+      <input type="text" id="hwTitle" placeholder="作业标题">
+      <input type="date" id="hwDate">
+      <input type="number" id="hwDur" value="30" style="width:70px" placeholder="分钟">
+      <input type="submit" id="hwAdd" value="添加">
+    </div>
+    ${list.map(x=>`<div class="row"><div class="body"><b>${esc(x.title)}</b><div class="meta">${esc((store.get(x.courseId)||{}).title||'')} · 截止 ${esc(x.date||'未定')}</div></div><button class="btn" data-hwdel="${esc(x.id)}">删除</button></div>`).join('')||'<p class="meta">没有未完成的作业</p>'}
+    </details>`;
+}
+const origSet=renderSettings;
+renderSettings=function(){return origSet()+hwPanel()};
+document.addEventListener('click',async e=>{
+  if(e.target.id!=='hwAdd')return;
+  const cid=document.getElementById('hwCourse').value;
+  const t=document.getElementById('hwTitle').value.trim();
+  const d=document.getElementById('hwDate').value;
+  const dur=Number(document.getElementById('hwDur').value)||30;
+  if(!t||!d){alert('写标题、选截止日');return}
+  await store.put({id:'hw:manual:'+Date.now(),kind:'task',courseId:cid,title:t,date:d,duration:dur,category:'课程',done:false,start:'',end:''});
+  render();try{await cloud.sync()}catch(err){}
+},true);
+document.addEventListener('click',async e=>{
+  const b=e.target.closest&&e.target.closest('[data-hwdel]');
+  if(!b)return;e.preventDefault();e.stopImmediatePropagation();
+  if(!confirm('删除这条作业？'))return;
+  await store.remove(b.getAttribute('data-hwdel'));render();try{await cloud.sync()}catch(err){}
+},true);
