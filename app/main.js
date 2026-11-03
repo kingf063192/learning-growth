@@ -407,7 +407,7 @@ render = function(){
 };
 
 renderCourses = function(){
-  const cs=store.all('course');
+  const cs=store.all('course').filter(c=>c.id!=='g-cook');
   let allDone=0,allTot=0;
   cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
   const totalPct=allTot?Math.round(allDone/allTot*100):0;
@@ -477,7 +477,7 @@ ensureDailyStudy = async function(){
 };
 
 renderCourses = function(){
-  const cs=store.all('course');
+  const cs=store.all('course').filter(c=>c.id!=='g-cook');
   let allDone=0,allTot=0;
   cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
   const totalPct=allTot?Math.round(allDone/allTot*100):0;
@@ -529,7 +529,7 @@ ensureDailyStudy();
 /* ===== 学习页：默认 5 张卡，避免太长 ===== */
 let showAllCourses=false;
 renderCourses = function(){
-  const cs=store.all('course');
+  const cs=store.all('course').filter(c=>c.id!=='g-cook');
   let allDone=0,allTot=0;
   cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
   const totalPct=allTot?Math.round(allDone/allTot*100):0;
@@ -858,7 +858,7 @@ renderWeek = function(){
 };
 
 /* ===== 今日：6 个学习任务 + 作业区；只给专业课/考研排学习 ===== */
-const STUDY_OK=['g-eng','g-biochem','g-cell','g-politics','g-inorg','g-org','g-cook','g-food','g-report','g-dou','g-draw','g-drum'];
+const STUDY_OK=['g-eng','g-biochem','g-cell','g-politics','g-inorg','g-org','g-food','g-report','g-dou','g-draw','g-drum'];
 const HOMEWORK_IDS=['g-online'];
 function isHomework(t){
   if(HOMEWORK_IDS.includes(t.courseId))return true;
@@ -983,6 +983,9 @@ function homeworkSpecs(){
 }
 async function ensureHomeworkRecords(){
   const t=today();
+  for(const x of store.all('task').filter(x=>x.courseId==='g-cook'&&!x.done&&x.date>=today())){
+    await store.put({...x,date:'',start:'',end:''});
+  }
   const specs=homeworkSpecs();
   for(const oldRec of store.all('task').filter(x=>x.id&&x.id.startsWith('hw:cook:'))){ if(!oldRec.done)await store.remove(oldRec.id); }
   for(const r of specs){
