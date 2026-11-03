@@ -191,6 +191,46 @@ details.panel>summary::-webkit-details-marker{display:none}
 details.panel>summary::before{content:"▸ ";color:var(--accent)}
 details.panel[open]>summary::before{content:"▾ "}
 
+/* ── 导师端增强：待我处理 / 催办 / 版本角标 / 里程碑 ─────────────── */
+.todo{padding:12px 14px}
+.todo-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.todo-head .meta{display:inline-flex;align-items:center;gap:6px;margin:0}
+.todo-head input{width:110px;min-height:30px;padding:2px 8px;font-size:12.5px}
+.todo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.tn{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:8px 10px;min-height:52px;
+    border:1px solid var(--line);border-radius:10px;background:var(--panel);text-align:left;cursor:pointer}
+.tn b{font-size:19px;line-height:1.1;color:var(--accent)}
+.tn span{font-size:11.5px;color:var(--muted)}
+.tn.hot{border-color:var(--accent);background:var(--accent-soft)}
+.tn.hot b{color:var(--accent-ink)}
+.todo-list{margin:8px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+.todo-list li{margin:2px 0;overflow-wrap:anywhere}
+.todo-stu{margin:0;font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.warnline{color:var(--danger);background:var(--danger-soft);border-radius:8px;padding:4px 8px;margin:6px 0 0}
+
+/* 文件版本角标 */
+.vtag{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--lock-soft);color:var(--muted);white-space:nowrap}
+.vtag.latest{background:var(--ok-soft);color:var(--ok)}
+.fitem .mini{margin-left:auto}
+
+/* 必须改 状态 */
+.rst{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:99px;white-space:nowrap}
+.rst.ok{background:var(--ok-soft);color:var(--ok)}
+.rst.bad{background:var(--danger-soft);color:var(--danger)}
+
+/* 里程碑 */
+.ms-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.ms-row{display:flex;gap:8px;flex-wrap:wrap}
+.ms{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel);font-size:12.5px}
+.ms-n{font-weight:600}
+.ms small{font-size:11px;color:var(--muted)}
+.ms.urgent{border-color:var(--danger);background:var(--danger-soft)}
+.ms.urgent small{color:var(--danger);font-weight:600}
+.ms.past{opacity:.55}
+.ms.none small{color:var(--lock)}
+.ms input{width:auto;min-height:30px;padding:1px 6px;font-size:12.5px}
+
 /* 响应式：手机一列、无横向滚动；桌面两列 */
 @media(min-width:1000px){
   .wrap{max-width:1080px;padding:26px 24px 64px}
@@ -201,6 +241,9 @@ details.panel[open]>summary::before{content:"▾ "}
 }
 @media(max-width:719px){
   input,textarea,select{font-size:16px}
+  .todo-grid{grid-template-columns:repeat(2,1fr)}
+  .ms{flex:1 1 44%}
+  .ms input{width:100%}
   .wrap{padding:12px 10px 64px}
   .panel{padding:12px;border-radius:12px}
   .pct{font-size:24px}

@@ -133,14 +133,18 @@ async function deleteCode(id) {
   catch (e) { toast(e.message); }
 }
 const advisorLink = c => location.origin + location.pathname + '?code=' + encodeURIComponent(c);
-async function copyText(v) {
-  try { await navigator.clipboard.writeText(v); toast('已复制导师链接'); }
+async function copyText(v, msg = '已复制') {
+  try { await navigator.clipboard.writeText(v); toast(msg); return; } catch { /* 走降级 */ }
+  const ta = document.createElement('textarea');
+  ta.value = v; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); ta.remove(); toast(msg); }
   catch {
-    const ta = document.createElement('textarea');
-    ta.value = v; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); toast('已复制导师链接'); } catch { toast('复制失败，请手动选中链接'); }
     ta.remove();
+    openModal(`<h3>复制这段发给对方</h3><textarea id="copyBox" style="min-height:180px">${esc(v)}</textarea>
+      <div class="acts"><button class="primary" id="copySel">全选</button><button id="copyClose">关闭</button></div>`);
+    $('#copySel').onclick = () => { const b = $('#copyBox'); b.focus(); b.select(); };
+    $('#copyClose').onclick = closeModal;
   }
 }
 
@@ -151,7 +155,9 @@ async function openCode(c) {
   try {
     const d = await rpc('thesis_view', { p_code: c });
     if (!d || !d.ok) throw Error((d && d.error) || '邀请码无效或已停用');
-    data = d; loading = false; render();
+    data = d; loading = false;
+    await probeCaps();   /* 先确认 SQL 跑没跑，再决定 T2/T5 显示什么 */
+    render();
   } catch (e) { loading = false; data = null; toast(e.message); render(); }
 }
 function goBack() {
@@ -249,22 +255,133 @@ function commentsFor(taskId) { return ((data && data.comments) || []).filter(c =
 function commentHtml(c) {
   const k = kindOf(c.body);
   const body = k ? String(c.body).replace(/^【.+?】/, '') : String(c.body || '');
+  const must = k === '必须改';
+  const resolved = c.resolved === true;
+  const status = must && CAPS.resolve
+    ? (resolved ? '<span class="rst ok">已处理</span>' : '<span class="rst bad">未处理</span>')
+    : '';
+  const btn = must && CAPS.resolve && isAdvisor() && !resolved
+    ? `<button class="mini" data-resolve="${esc(c.id)}">标记已处理</button>` : '';
   return `<div class="cmt ${kindClass(k)}">
-    <div class="cmt-head"><b>${esc(c.author || '')}</b><span>${esc((c.created_at || '').replace('T', ' ').slice(0, 16))}</span>${k ? `<span class="kk ${kindClass(k)}">${esc(k)}</span>` : ''}</div>
+    <div class="cmt-head"><b>${esc(c.author || '')}</b><span>${esc((c.created_at || '').replace('T', ' ').slice(0, 16))}</span>${k ? `<span class="kk ${kindClass(k)}">${esc(k)}</span>` : ''}${status}${btn}</div>
     <p class="cmt-body">${esc(body)}</p>
   </div>`;
 }
 const kindSelect = (attr, id) => `<select ${attr}="${esc(id)}"><option>建议</option><option>必须改</option><option>疑问</option></select>`;
 
+/* ── 数据库能力探测（mentor2 的 SQL 跑没跑）+ 小工具 ────────────── */
+const dateDiff = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
+const CAPS = { resolve: null, meta: null };
+let capsCode = '';
+async function probeCaps() {
+  if (!code) return CAPS;
+  if (capsCode !== code) { CAPS.resolve = null; CAPS.meta = null; capsCode = code; }
+  if (CAPS.resolve === null) {
+    try {
+      await rpc('thesis_comment_resolve', { p_code: code, p_id: '00000000-0000-0000-0000-000000000000', p_resolved: true });
+      CAPS.resolve = true;
+    } catch { CAPS.resolve = false; }
+  }
+  if (CAPS.meta === null) {
+    try {
+      await rpc('thesis_aux_save', { p_code: code, p_refs: null, p_logs: null, p_meta: null });
+      CAPS.meta = true;
+    } catch { CAPS.meta = false; }
+  }
+  return CAPS;
+}
+
+const metaOf = () => ((data && data.auxx) || {}).meta || {};
+const DEFAULT_MILESTONES = ['开题', '中期', '查重', '答辩'];
+function milestonesOf() {
+  const m = metaOf().milestones;
+  if (Array.isArray(m) && m.length) return m.map(x => ({ name: String((x && x.name) || ''), date: String((x && x.date) || '') }));
+  return DEFAULT_MILESTONES.map(name => ({ name, date: '' }));
+}
+
+/* 上次查看时间：用来算「新评语 / 新文件」，刷新后归零 */
+const lastSeenKey = () => 'thesis:lastseen:' + code;
+const lastSeen = () => { try { return localStorage.getItem(lastSeenKey()) || ''; } catch { return ''; } };
+const bumpLastSeen = () => { try { localStorage.setItem(lastSeenKey(), new Date().toISOString()); } catch { /* 忽略 */ } };
+const isNewer = (iso, since) => !!iso && (!since || String(iso) > since);
+
+/* 导师端拿不到学生真名，本地记一个备注名 */
+const studentNameKey = () => 'thesis:studentname:' + code;
+const studentName = () => { try { return (localStorage.getItem(studentNameKey()) || '').trim() || '同学'; } catch { return '同学'; } };
+
+/* 「就此文件评语」预填 */
+const commentDrafts = {};
+
+function mustFixOf(stageId) {
+  const list = ((data && data.comments) || []).filter(c => String(c.task_id || '') === String(stageId || '') && /^【必须改】/.test(c.body || ''));
+  return { all: list.length, open: list.filter(c => c.resolved !== true).length };
+}
+
+function stageChaseText(st, sm) {
+  const s = sm[st.id] || {}, ck = s.checks || {};
+  const total = (st.items || []).length;
+  const done = (st.items || []).reduce((n, _, j) => n + (normalizeCheck(ck[j]).done ? 1 : 0), 0);
+  const upd = String(s.updated_at || '').slice(0, 10);
+  const days = upd ? dateDiff(upd, todayStr()) : null;
+  const mf = mustFixOf(st.id).open;
+  const L = [`${studentName()}你好，关于论文的「${st.t}」这一阶段：`];
+  L.push(`· 清单完成 ${done}/${total}`);
+  if (days !== null) L.push(`· 距上次更新 ${days} 天`);
+  if (CAPS.resolve && mf > 0) L.push(`· 还有 ${mf} 条「必须改」没处理`);
+  L.push('麻烦有空看一下，有问题随时说～');
+  return L.join('\n');
+}
+function chaseAllText(ds, sm) {
+  const stale = [];
+  ds.forEach((st, i) => {
+    if (doneOf(sm, st.id) || !unlocked(sm, ds, i)) return;
+    const s = sm[st.id] || {};
+    const upd = String(s.updated_at || '').slice(0, 10);
+    if (upd && dateDiff(upd, todayStr()) > 7) stale.push({ st, s });
+  });
+  if (!stale.length) return null;
+  const L = [`${studentName()}你好，论文这边想同步一下进度：`];
+  stale.forEach(({ st, s }) => {
+    const ck = s.checks || {};
+    const total = (st.items || []).length;
+    const done = (st.items || []).reduce((n, _, j) => n + (normalizeCheck(ck[j]).done ? 1 : 0), 0);
+    const days = dateDiff(String(s.updated_at).slice(0, 10), todayStr());
+    L.push(`· 「${st.t}」清单 ${done}/${total}，已经 ${days} 天没更新`);
+  });
+  L.push('看看这周能不能推进一下？');
+  return L.join('\n');
+}
+
 /* ── 文件 ────────────────────────────────────────────────────── */
 const fileUrl = p => config.url + '/storage/v1/object/public/thesis-files/' + String(p || '').split('/').map(encodeURIComponent).join('/');
+function versionLabel(name, index) {
+  const n = String(name || '');
+  const m = /(?:^|[^a-z0-9])v(?:er)?\.?\s*([0-9]{1,3})(?![0-9])/i.exec(n);
+  if (m) return '版本 ' + (+m[1]);
+  const base = n.replace(/\.[a-z0-9]{1,5}$/i, '');
+  const t = /([0-9]{1,3})$/.exec(base);
+  if (t) return '版本 ' + (+t[1]);
+  return '第 ' + (index + 1) + ' 个版本';
+}
+/* 同一阶段的文件按上传时间正序，最后一个算最新 */
+function sortedFiles(taskId) {
+  return ((data && data.files) || [])
+    .filter(f => String(f.task_id || '') === String(taskId || ''))
+    .slice()
+    .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+}
 function fileItems(taskId) {
-  const files = ((data && data.files) || []).filter(f => String(f.task_id || '') === String(taskId || ''));
-  if (!files.length) return '';
-  return `<div class="files">${files.map(f => `<div class="fitem">
+  const list = sortedFiles(taskId);
+  if (!list.length) return '';
+  return `<div class="files">${list.map((f, i) => {
+    const latest = i === list.length - 1;
+    return `<div class="fitem">
       <a href="${esc(fileUrl(f.path))}" target="_blank" rel="noopener">${esc(f.name)}</a>
+      <span class="vtag ${latest ? 'latest' : ''}">${esc(versionLabel(f.name, i))}${latest ? ' · 最新' : ''}</span>
       <span class="meta">${esc(f.uploaded_by || '')} · ${esc((f.created_at || '').slice(0, 10))}</span>
-    </div>`).join('')}</div>`;
+      <button class="mini" data-filecmt="${esc(f.id)}">就此文件评语</button>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 /* ── 阶段卡片 ────────────────────────────────────────────────── */
@@ -298,12 +415,14 @@ function stageCard(st, i, sm, ds) {
         ${confirmBtn}
         <button class="link" data-cmt="${esc(st.id)}">评语${cmtN ? ' · ' + cmtN : ''}</button>
         <label class="upload">上传文件<input type="file" data-upfile="${esc(st.id)}" hidden></label>
+        ${isAdvisor() ? `<button data-chase="${esc(st.id)}">复制催办</button><button data-return="${esc(st.id)}">退回修改</button>` : ''}
       </div>
+      ${CAPS.resolve && mustFixOf(st.id).open > 0 ? `<p class="meta warnline">这个阶段还有 ${mustFixOf(st.id).open} 条「必须改」没处理</p>` : ''}
       ${openComments.has(st.id) ? `<div class="sub">
         ${commentsFor(st.id).map(commentHtml).join('') || '<p class="meta">还没有评语</p>'}
         <div class="form">
           ${kindSelect('data-kind', st.id)}
-          <textarea data-body="${esc(st.id)}" placeholder="给这个阶段写评语…"></textarea>
+          <textarea data-body="${esc(st.id)}" placeholder="给这个阶段写评语…">${esc(commentDrafts[st.id] || '')}</textarea>
           <button class="primary" data-send="${esc(st.id)}">发送评语</button>
         </div>
       </div>` : ''}
@@ -327,8 +446,15 @@ function boardCard() {
 /* ── 文献库 / 实验记录 / 导出 ────────────────────────────────── */
 const refsOf = () => ((data && data.auxx) || {}).refs || [];
 const logsOf = () => ((data && data.auxx) || {}).logs || [];
-async function saveAux(refs, logs) {
-  await rpc('thesis_aux_save', { p_code: code, p_refs: refs, p_logs: logs });
+/* mentor2 SQL 跑过后才能存 meta；没跑就只存 refs/logs，不会报错 */
+async function saveAux(patch = {}) {
+  const body = {
+    p_code: code,
+    p_refs: patch.refs !== undefined ? patch.refs : refsOf(),
+    p_logs: patch.logs !== undefined ? patch.logs : logsOf(),
+  };
+  if (CAPS.meta) body.p_meta = patch.meta !== undefined ? patch.meta : metaOf();
+  await rpc('thesis_aux_save', body);
   await reload();
 }
 function researchPanels() {
@@ -373,6 +499,15 @@ function exportReport() {
   L.push(`- 生成时间：${new Date().toLocaleString()}`);
   const dn = ds.filter(s => doneOf(sm, s.id)).length;
   L.push(`- 进度：${dn}/${ds.length} 阶段双方确认`);
+  if (CAPS.meta) {
+    const ms = milestonesOf().filter(m => m.date);
+    if (ms.length) {
+      L.push('- 里程碑：' + ms.map(m => {
+        const d = dateDiff(todayStr(), m.date);
+        return `${m.name} ${m.date}（${d < 0 ? '已过 ' + (-d) + ' 天' : d === 0 ? '今天' : '还有 ' + d + ' 天'}）`;
+      }).join(' · '));
+    }
+  }
   L.push('');
   ds.forEach((st, i) => {
     const s = sm[st.id] || {}, ck = s.checks || {};
@@ -488,12 +623,73 @@ function codesPanel() {
   </div>`;
 }
 
+/* ── T1 待我处理 ─────────────────────────────────────────────── */
+function todoCard(ds, sm) {
+  const since = lastSeen();
+  const allC = (data && data.comments) || [];
+  const allF = (data && data.files) || [];
+  if (isStudent()) {
+    const mine = allC.filter(c => c.author === '导师' && isNewer(c.created_at, since)).length;
+    if (!mine) return '';
+    return `<section class="panel todo"><p class="todo-stu">导师给我的新评语 <b>${mine}</b> 条 <button class="mini" data-jump="comment">去看看</button></p></section>`;
+  }
+  const waitList = ds.filter((st, i) => { const s2 = sm[st.id] || {}; return statusOf(st, i, sm, ds).key === 'wait' && !s2.advisor_ok; });
+  const openMust = CAPS.resolve ? allC.filter(c => /^【必须改】/.test(c.body || '') && c.resolved !== true) : [];
+  const newC = allC.filter(c => isNewer(c.created_at, since)).length;
+  const newF = allF.filter(f => isNewer(f.created_at, since)).length;
+  const cell = (n, label, jump) => `<button class="tn ${n ? 'hot' : ''}" data-jump="${jump}"><b>${n}</b><span>${label}</span></button>`;
+  const detail = waitList.slice(0, 2).map(st => `<li>待你确认：${esc(st.t)}</li>`);
+  if (openMust.length) detail.push(`<li>必须改：${esc(String(openMust[0].body).replace(/^【必须改】/, '').slice(0, 30))}</li>`);
+  let storedName = '';
+  try { storedName = localStorage.getItem(studentNameKey()) || ''; } catch { /* 忽略 */ }
+  return `<section class="panel todo">
+    <div class="todo-head"><b>待我处理</b>
+      <span class="meta">学生备注名 <input id="stName" value="${esc(storedName)}" placeholder="同学" maxlength="12"></span></div>
+    <div class="todo-grid">
+      ${cell(waitList.length, '待我确认', 'wait')}
+      ${CAPS.resolve ? cell(openMust.length, '未处理必改', 'mustfix') : ''}
+      ${cell(newC, '新评语', 'comment')}
+      ${cell(newF, '新文件', 'file')}
+    </div>
+    ${detail.length ? `<ul class="todo-list">${detail.join('')}</ul>` : ''}
+    ${CAPS.resolve ? '' : '<p class="meta">数据库还没升级：暂时没有「已处理」标记，必须改也不会阻止确认。</p>'}
+  </section>`;
+}
+
+/* ── T5 里程碑 ───────────────────────────────────────────────── */
+function milestonePanel() {
+  if (!CAPS.meta) return '';
+  const ms = milestonesOf(), t = todayStr();
+  const chips = ms.map((m, i) => {
+    const d = m.date ? dateDiff(t, m.date) : null;
+    const cls = d === null ? 'none' : d < 0 ? 'past' : d <= 7 ? 'urgent' : '';
+    const label = d === null ? '未设日期' : d === 0 ? '就是今天' : d < 0 ? `已过 ${-d} 天` : `还有 ${d} 天`;
+    if (isStudent()) {
+      return `<span class="ms ${cls}"><span class="ms-n">${esc(m.name)}</span>
+        <input type="date" data-ms="${i}" value="${esc(m.date || '')}" aria-label="${esc(m.name)}的日期">
+        <small>${label}</small><button class="mini" data-msdel="${i}" title="删除这个里程碑">×</button></span>`;
+    }
+    return `<span class="ms ${cls}"><span class="ms-n">${esc(m.name)}</span><small>${esc(m.date || '未设日期')} · ${label}</small></span>`;
+  }).join('');
+  return `<section class="panel milestones">
+    <div class="ms-head"><b>里程碑</b>${isStudent() ? '<button class="mini" id="msAdd">＋ 加一个</button>' : '<span class="meta">学生可编辑，导师只读</span>'}</div>
+    <div class="ms-row">${chips}</div></section>`;
+}
+
 function mainView() {
   const ds = defs(), sm = smap(), total = ds.length;
-  const dn = ds.filter(s => doneOf(sm, s.id)).length;
+  const dn = ds.filter(s2 => doneOf(sm, s2.id)).length;
   const pct = total ? Math.round(dn / total * 100) : 0;
   const stu = isStudent();
-  const allFiles = ((data && data.files) || []).length;
+  const allFiles = ((data && data.files) || []).slice()
+    .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  /* 版本角标按「同一阶段内的上传顺序」算 */
+  const labelOf = {}, groups = {};
+  allFiles.forEach(f => { const k = f.task_id || ''; (groups[k] = groups[k] || []).push(f); });
+  Object.keys(groups).forEach(k => groups[k].forEach((f, i) => {
+    labelOf[f.id] = { text: versionLabel(f.name, i), latest: i === groups[k].length - 1 };
+  }));
+  const staleChase = isAdvisor() ? chaseAllText(ds, sm) : null;
   return `<div class="panel">
     <div class="rolebar">
       <span class="rolebadge ${stu ? 'owner' : 'advisor'}">${stu ? '学生端' : '导师端'}</span>
@@ -512,16 +708,21 @@ function mainView() {
     <p class="meta">${dn} / ${total} 阶段双方确认 · 上一阶段双方都确认后，下一阶段才解锁</p>
     <div class="manage">
       ${stu ? `<button id="myCodes">我的邀请码</button><button id="mg">${manage ? '完成管理' : '管理阶段'}</button><button id="add">＋ 新增阶段</button>` : ''}
+      ${isAdvisor() ? `<button id="chaseAll"${staleChase ? '' : ' disabled title="没有超过 7 天没更新的阶段"'}>复制整体催办</button>` : ''}
       <button id="rf">刷新</button>
     </div>
   </div>
+  ${todoCard(ds, sm)}
+  ${milestonePanel()}
   ${stu && panel === 'codes' ? codesPanel() : ''}
   <div id="stages-grid">${ds.map((st, i) => stageCard(st, i, sm, ds)).join('')}</div>
   ${boardCard()}
-  ${allFiles ? `<details class="panel"><summary>全部文件 · ${allFiles}</summary>
-    <div class="files">${((data.files) || []).map(f => {
+  ${allFiles.length ? `<details class="panel" id="allFilesPanel"><summary>全部文件 · ${allFiles.length}</summary>
+    <div class="files">${allFiles.map(f => {
       const st = ds.find(x => x.id === f.task_id);
+      const lb = labelOf[f.id] || {};
       return `<div class="fitem"><a href="${esc(fileUrl(f.path))}" target="_blank" rel="noopener">${esc(f.name)}</a>
+        <span class="vtag ${lb.latest ? 'latest' : ''}">${esc(lb.text || '')}</span>
         <span class="meta">${st ? esc(st.t) + ' · ' : ''}${esc(f.uploaded_by || '')} · ${esc((f.created_at || '').slice(0, 10))}</span></div>`;
     }).join('')}</div></details>` : ''}
   ${researchPanels()}
@@ -529,6 +730,7 @@ function mainView() {
     <p class="meta">学生登录后生成邀请码，把“导师链接”发给导师。导师打开链接永远是导师端，即使这台浏览器登录过学生账号。</p>
     <p class="meta">每个阶段要「学生确认」和「导师确认」都完成才算通过，下一阶段才解锁。清单条目两边都能勾选、修改和批注，改动会留下痕迹。</p>
     <p class="meta">文献库和实验记录两边都能加、都能删。导师端右上角有「学生登录」，学生本人用导师链接打开时可以从那里登录切回学生端。</p>
+    <p class="meta">导师端还能「退回修改」（写一条必须改）、「复制催办」、把必须改标成已处理；未处理的必须改会挡住确认。</p>
   </details>`;
 }
 
@@ -546,6 +748,7 @@ function render() {
   }
   app.innerHTML = mainView();
   bindMain();
+  bumpLastSeen();   /* 「新评语 / 新文件」是相对上次查看算的，渲染完记一次 */
 }
 
 /* ── 阶段编辑弹窗（学生端） ──────────────────────────────────── */
@@ -591,6 +794,130 @@ function bindMain() {
   const mc = $('#myCodes'); if (mc) mc.onclick = () => { panel = panel === 'codes' ? '' : 'codes'; render(); };
   const mg = $('#mg'); if (mg) mg.onclick = () => { manage = !manage; render(); };
   const ad = $('#add'); if (ad) ad.onclick = () => stageEditor(null);
+
+  /* ── T1 待我处理：备注名 + 数字跳转 ── */
+  const sn = $('#stName');
+  if (sn) sn.onchange = () => {
+    const v = (sn.value || '').trim();
+    try { if (v) localStorage.setItem(studentNameKey(), v); else localStorage.removeItem(studentNameKey()); } catch { /* 忽略 */ }
+    toast(v ? '学生备注名已保存' : '已清除备注名');
+  };
+  document.querySelectorAll('[data-jump]').forEach(b => {
+    b.onclick = () => {
+      const what = b.getAttribute('data-jump');
+      const ds = defs(), sm = smap();
+      let target = null;
+      if (what === 'wait') {
+        const st = ds.find((x, i) => { const s2 = sm[x.id] || {}; return statusOf(x, i, sm, ds).key === 'wait' && !s2.advisor_ok; });
+        if (st) target = document.querySelector(`[data-stage="${st.id}"]`);
+        if (!target) toast('没有待你确认的阶段');
+      } else if (what === 'mustfix') {
+        const c = ((data && data.comments) || []).find(x => /^【必须改】/.test(x.body || '') && x.resolved !== true);
+        if (c && c.task_id) { openComments.add(c.task_id); render(); target = document.querySelector(`[data-stage="${c.task_id}"]`); }
+        else toast('没有未处理的「必须改」');
+      } else if (what === 'comment') {
+        target = document.getElementById('boardPanel');
+        if (target) { target.open = true; } else toast('还没有留言');
+      } else if (what === 'file') {
+        target = document.getElementById('allFilesPanel');
+        if (target) { target.open = true; } else toast('还没有上传过文件');
+      }
+      if (target) target.scrollIntoView({ block: 'center' });
+    };
+  });
+
+  /* ── T2 标记已处理 / 退回修改 ── */
+  document.querySelectorAll('[data-resolve]').forEach(b => {
+    b.onclick = async () => {
+      const id = b.getAttribute('data-resolve');
+      try { await rpc('thesis_comment_resolve', { p_code: code, p_id: id, p_resolved: true }); await reload(); toast('已标记「已处理」'); }
+      catch (e) { toast(e.message); }
+    };
+  });
+  document.querySelectorAll('[data-return]').forEach(b => {
+    b.onclick = () => {
+      const sid = b.getAttribute('data-return');
+      const st = defs().find(x => x.id === sid);
+      if (!st) return;
+      openModal(`<h3>退回修改 · ${esc(st.t)}</h3>
+        <p class="meta">原因会写成一条「必须改」评语；如果你已经确认过这个阶段，会同时撤销你的确认。</p>
+        <label>退回原因（必填）</label><textarea id="rtReason" placeholder="比如：图 2 的误差线要标清楚"></textarea>
+        <div class="acts"><button class="primary" id="rtOk">退回</button><button id="rtCancel">取消</button></div>`);
+      $('#rtCancel').onclick = closeModal;
+      $('#rtOk').onclick = async () => {
+        const reason = ($('#rtReason').value || '').trim();
+        if (!reason) { toast('退回原因不能为空'); return; }
+        try {
+          await rpc('thesis_comment_add', { p_code: code, p_task_id: sid, p_author: author(), p_body: '【必须改】' + reason });
+          const s = smap()[sid] || {};
+          if (s.advisor_ok) await rpc('thesis_stage_set', { p_code: code, p_stage: sid, p_checks: s.checks || {}, p_owner: null, p_advisor: false });
+          closeModal(); await reload(); toast('已退回修改');
+        } catch (e) { toast(e.message); }
+      };
+    };
+  });
+
+  /* ── T3 催办 ── */
+  document.querySelectorAll('[data-chase]').forEach(b => {
+    b.onclick = () => {
+      const sid = b.getAttribute('data-chase');
+      const st = defs().find(x => x.id === sid);
+      if (st) copyText(stageChaseText(st, smap()), '已复制催办文案');
+    };
+  });
+  const ca = $('#chaseAll');
+  if (ca) ca.onclick = () => {
+    const txt = chaseAllText(defs(), smap());
+    if (!txt) { toast('没有超过 7 天没更新的阶段'); return; }
+    copyText(txt, '已复制整体催办');
+  };
+
+  /* ── T4 就此文件评语 ── */
+  document.querySelectorAll('[data-filecmt]').forEach(b => {
+    b.onclick = () => {
+      const fid = b.getAttribute('data-filecmt');
+      const f = ((data && data.files) || []).find(x => x.id === fid);
+      if (!f) return;
+      const sid = f.task_id;
+      if (!sid) { toast('这个文件没有归属阶段'); return; }
+      openComments.add(sid);
+      commentDrafts[sid] = `针对《${f.name}》：`;
+      render();
+      const card = document.querySelector(`[data-stage="${sid}"]`);
+      if (card) card.scrollIntoView({ block: 'center' });
+      const ta = document.querySelector(`[data-body="${sid}"]`);
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    };
+  });
+
+  /* ── T5 里程碑（学生可编辑） ── */
+  document.querySelectorAll('[data-ms]').forEach(el => {
+    el.onchange = async () => {
+      const i = +el.getAttribute('data-ms');
+      const ms = milestonesOf().slice();
+      if (!ms[i]) return;
+      ms[i] = { ...ms[i], date: el.value };
+      try { await saveAux({ meta: { ...metaOf(), milestones: ms } }); toast('里程碑已保存'); }
+      catch (e) { toast(e.message); }
+    };
+  });
+  const msa = $('#msAdd');
+  if (msa) msa.onclick = async () => {
+    const name = (prompt('里程碑名称（比如：预答辩）') || '').trim();
+    if (!name) return;
+    const ms = milestonesOf().concat([{ name, date: '' }]);
+    try { await saveAux({ meta: { ...metaOf(), milestones: ms } }); toast('已添加'); } catch (e) { toast(e.message); }
+  };
+  document.querySelectorAll('[data-msdel]').forEach(b => {
+    b.onclick = async () => {
+      const i = +b.getAttribute('data-msdel');
+      const ms = milestonesOf().slice();
+      if (!ms[i]) return;
+      if (!confirm(`删除里程碑「${ms[i].name}」？`)) return;
+      ms.splice(i, 1);
+      try { await saveAux({ meta: { ...metaOf(), milestones: ms } }); toast('已删除'); } catch (e) { toast(e.message); }
+    };
+  });
 
   /* 阶段管理 */
   document.querySelectorAll('[data-up],[data-dn]').forEach(b => {
@@ -666,11 +993,22 @@ function bindMain() {
     };
   });
 
-  /* 双方确认（各自只能点自己那一边） */
+  /* 双方确认（各自只能点自己那一边；有未处理必须改时挡住 —— T2） */
   document.querySelectorAll('[data-ok]').forEach(b => {
     b.onclick = async () => {
       const [sid, who] = b.getAttribute('data-ok').split(':');
       const s = smap()[sid] || {};
+      const mf = mustFixOf(sid).open;
+      if (mf > 0) {
+        if (CAPS.resolve) {
+          toast(`还有 ${mf} 条「必须改」没处理，处理完再确认`);
+          openComments.add(sid); render();
+          const card = document.querySelector(`[data-stage="${sid}"]`);
+          if (card) card.scrollIntoView({ block: 'center' });
+          return;
+        }
+        toast(`提示：这个阶段还有 ${mf} 条「必须改」评语（数据库未升级，不阻止确认）`);
+      }
       try {
         if (who === 'owner') await rpc('thesis_stage_set', { p_code: code, p_stage: sid, p_checks: s.checks || {}, p_owner: !s.owner_ok, p_advisor: null });
         else await rpc('thesis_stage_set', { p_code: code, p_stage: sid, p_checks: s.checks || {}, p_owner: null, p_advisor: !s.advisor_ok });
@@ -689,8 +1027,11 @@ function bindMain() {
       const body = (document.querySelector(`[data-body="${id}"]`)?.value || '').trim();
       if (!body) { toast('评语不能为空'); return; }
       const kind = document.querySelector(`[data-kind="${id}"]`)?.value || '建议';
-      try { await rpc('thesis_comment_add', { p_code: code, p_task_id: id, p_author: author(), p_body: '【' + kind + '】' + body }); await reload(); toast('已发送'); }
-      catch (e) { toast(e.message); }
+      try {
+        await rpc('thesis_comment_add', { p_code: code, p_task_id: id, p_author: author(), p_body: '【' + kind + '】' + body });
+        delete commentDrafts[id];
+        await reload(); toast('已发送');
+      } catch (e) { toast(e.message); }
     };
   });
 
@@ -704,13 +1045,15 @@ function bindMain() {
     catch (e) { toast(e.message); }
   };
 
-  /* 上传文件 */
+  /* 上传文件（同名提醒带版本号 —— T4） */
   document.querySelectorAll('[data-upfile]').forEach(el => {
     el.onchange = async () => {
       const sid = el.getAttribute('data-upfile');
       const f = el.files && el.files[0];
       if (!f) return;
       if (f.size > 10 * 1024 * 1024) { toast('文件超过 10MB，请压缩后再传'); el.value = ''; return; }
+      const dup = ((data && data.files) || []).some(x => x.name === f.name);
+      if (dup) toast('已有同名文件，建议这次文件名带上 v2 / v3，方便区分版本');
       const safe = f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g, '_').slice(0, 80);
       const path = code + '/' + Date.now() + '_' + safe;
       try {
@@ -731,26 +1074,26 @@ function bindMain() {
   const rAdd = $('#rAdd');
   if (rAdd) rAdd.onclick = async () => {
     const refs = refsOf().concat([{ a: $('#rA').value.trim(), t: $('#rT').value.trim(), d: $('#rD').value.trim(), c: $('#rC').value.trim() }]);
-    try { await saveAux(refs, logsOf()); toast('已加入文献库'); } catch (e) { toast(e.message); }
+    try { await saveAux({ refs }); toast('已加入文献库'); } catch (e) { toast(e.message); }
   };
   document.querySelectorAll('[data-refdel]').forEach(b => {
     b.onclick = async () => {
       const i = +b.getAttribute('data-refdel');
       const refs = refsOf().slice(); refs.splice(i, 1);
-      try { await saveAux(refs, logsOf()); toast('已删除'); } catch (e) { toast(e.message); }
+      try { await saveAux({ refs }); toast('已删除'); } catch (e) { toast(e.message); }
     };
   });
   /* 实验记录 */
   const lAdd = $('#lAdd');
   if (lAdd) lAdd.onclick = async () => {
     const logs = logsOf().concat([{ d: $('#lD').value, b: $('#lB').value.trim(), p: $('#lP').value.trim(), r: $('#lR').value.trim() }]);
-    try { await saveAux(refsOf(), logs); toast('已记录'); } catch (e) { toast(e.message); }
+    try { await saveAux({ logs }); toast('已记录'); } catch (e) { toast(e.message); }
   };
   document.querySelectorAll('[data-logdel]').forEach(b => {
     b.onclick = async () => {
       const i = +b.getAttribute('data-logdel');
       const logs = logsOf().slice(); logs.splice(i, 1);
-      try { await saveAux(refsOf(), logs); toast('已删除'); } catch (e) { toast(e.message); }
+      try { await saveAux({ logs }); toast('已删除'); } catch (e) { toast(e.message); }
     };
   });
   const ex = $('#expBtn'); if (ex) ex.onclick = exportReport;
