@@ -556,3 +556,34 @@ document.addEventListener('click',e=>{
   if(e.target.id==='moreCourses'){e.preventDefault();e.stopImmediatePropagation();showAllCourses=true;render()}
 },true);
 ensureDailyStudy();
+
+/* ===== 今日只放学习任务，不再重复课表里的课 ===== */
+renderToday = function(){
+  const isStudy=t=>t.category!=='固定课程';
+  const list=tasks().filter(t=>t.date===today()&&isStudy(t));
+  const dn=list.filter(t=>t.done).length;
+  const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
+  const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
+  const untimed=list.filter(t=>!t.start);
+  const next=list.filter(t=>!t.done).sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'))[0];
+  const allDone=dn===list.length&&list.length>0;
+  const rowC=t=>{
+    const col=courseColorOf(t);
+    return `<div class="row ${t.done?'done':''}"><input type="checkbox" data-task="${esc(t.id)}" ${t.done?'checked':''}>
+      <div class="body"><button class="title" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button>
+      <div class="meta"><span class="tag" style="background:${col}1a;color:${col}">${esc((course(t)||{}).title||t.category||'任务')}</span>${t.start?esc(t.start+'–'+t.end):'今天随时'}</div></div>
+      <button class="mini-btn" data-focus="${esc(t.id)}">2 分钟</button><button class="x-btn" data-split="${esc(t.id)}">×</button></div>`;
+  };
+  return `<div class="panel focus-now">
+    <p class="meta">现在做</p>
+    <h2 class="now-title">${allDone?'今天做完了，去休息 🎉':(next?esc(next.title):'今天没有学习任务')}</h2>
+    ${next?`<button class="primary big" data-focus="${esc(next.id)}">开始 2 分钟</button>`:''}
+    <p class="today-line">${allDone?'':'已完成 '+dn+' / '+list.length} · 今日 +${award} 分 · 连续 ${streakDays()} 天</p></div>
+  <div class="panel"><div class="toolbar"><h2>今天要做</h2>${action('＋ 任务','newTask')}</div>
+  ${timed.map(rowC).join('')}
+  ${untimed.length?'<h3 style="font-size:13px;color:var(--muted);margin:12px 0 4px">今天的计划（随时做）</h3>'+untimed.map(rowC).join(''):''}
+  ${!list.length?empty('今天没有学习任务'):''}
+  <p class="meta" style="margin-top:8px">课表里的课不放在这里，只在“行程”里看。</p>
+  </div>`;
+};
+ensureDailyStudy();
