@@ -50,6 +50,10 @@ if (cloud.session) {
 
 const settings = () => ({ ...defaults, ...(store.get('settings')?.value || {}) });
 const allTasks = () => store.all('task');
+/* 固定日程的"任务化"记录（旧版 fixedWeek 生成的、以及本版 fix: 完成标记）不再当成普通任务渲染，
+   否则会和 fixed 记录在今日/行程里各画一遍，看起来就是重复。 */
+const isFixedTask = t => !!t && (t.category === '固定课程' || t.source === 'fixed');
+const openTasks = () => allTasks().filter(t => !isFixedTask(t));
 const courseOf = t => (t?.courseId ? store.get(t.courseId) : null);
 const chapterOf = t => (t?.chapterId ? store.get(t.chapterId) : null);
 
@@ -72,38 +76,44 @@ function applyTheme(key) {
   return k;
 }
 
-/* ── 种子升级（老用户也能拿到新的固定日程、课程分类与章节权重） ── */
+/* ── 种子升级（老用户也能拿到新固定日程、课程分类、章节权重；v5 修行程重复） ── */
 async function ensureSeed() {
   const s = store.get('settings')?.value || {};
-  if (Number(s.seedVersion || 1) >= 4) return;
+  const v = Number(s.seedVersion || 1);
+  if (v >= 5) return;
   const seedIds = new Set(content.map(c => c.id));
-  /* 1) 旧的 fixed-fN 命名换成新的 fixed-*，避免行程页出现两份日程 */
-  const stale = store.all('fixed').filter(f => !seedIds.has(f.id));
-  for (const f of stale) await store.put({ ...f, deleted: true });
+  if (v < 4) {
+    /* 1) 旧的 fixed-fN 命名换成新的 fixed-*，避免行程页出现两份日程 */
+    for (const f of store.all('fixed').filter(f => !seedIds.has(f.id))) await store.put({ ...f, deleted: true });
+    /* 2) 已有 course 的元数据覆盖成新分类/优先级（保留用户其它字段） */
+    for (const c of content.filter(c => c.kind === 'course')) {
+      const cur = store.get(c.id);
+      if (cur) await store.put({
+        ...cur, title: c.title, category: c.category, start: c.start, deadline: c.deadline,
+        frequency: c.frequency, priority: c.priority, thesisOnly: !!c.thesisOnly,
+      });
+    }
+    /* 3) 章节：标题/知识点/顺序/权重用新种子覆盖，用户写的学习指导保留 */
+    for (const c of content.filter(c => c.kind === 'chapter')) {
+      const cur = store.get(c.id);
+      if (cur) await store.put({ ...cur, title: c.title, topic: c.topic, order: c.order, weight: c.weight });
+    }
+  }
+  /* 4) 固定日程刷新一次（v5 给「心理医生复诊」补了 soft 标记，请假去不算冲突） */
   for (const f of content.filter(c => c.kind === 'fixed')) await store.put({ ...f });
-  /* 2) 已有 course 的元数据覆盖成新分类/优先级（保留用户其它字段） */
-  for (const c of content.filter(c => c.kind === 'course')) {
-    const cur = store.get(c.id);
-    if (cur) await store.put({
-      ...cur, title: c.title, category: c.category, start: c.start, deadline: c.deadline,
-      frequency: c.frequency, priority: c.priority, thesisOnly: !!c.thesisOnly,
-    });
+  /* 5) 清掉旧版 fixedWeek() 生成的「固定课程任务」——它们会和 fixed 记录重复渲染 */
+  for (const t of store.all('task')) {
+    if (t.category === '固定课程' && /^fixed-f\d+:/.test(String(t.id || ''))) await store.put({ ...t, deleted: true });
   }
-  /* 3) 章节：标题/知识点/顺序/权重用新种子覆盖，用户写的学习指导保留 */
-  for (const c of content.filter(c => c.kind === 'chapter')) {
-    const cur = store.get(c.id);
-    if (cur) await store.put({ ...cur, title: c.title, topic: c.topic, order: c.order, weight: c.weight });
-  }
-  /* 4) 补齐新增的课程/章节/固定日程 */
   await store.merge(content);
-  await store.put({ id: 'settings', kind: 'setting', value: { ...defaults, ...s, seedVersion: 4 } });
+  await store.put({ id: 'settings', kind: 'setting', value: { ...defaults, ...s, seedVersion: 5 } });
 }
 
 /* ── 每日补任务 + 作业生成 ── */
 function freeSlotOn(date) {
   const s = settings();
   const busy = new Set(fixedInstances(store.all('fixed'), s, date, 1).map(f => f.slot));
-  const used = new Set(allTasks().filter(t => t.date === date && t.slot).map(t => t.slot));
+  const used = new Set(openTasks().filter(t => t.date === date && t.slot).map(t => t.slot));
   return SLOT_KEYS.find(k => !busy.has(k) && !used.has(k)) || '';
 }
 async function ensureDaily() {
@@ -150,7 +160,7 @@ function todayItems() {
      兴趣与游戏是固定日程，只在行程页展示，避免把休闲安排也算成待办。 */
   const fixed = fixedInstances(store.all('fixed'), s, d, 1).filter(f => f.cat !== '游戏' && f.cat !== '兴趣');
   const tasks = allTasks();
-  const planned = tasks.filter(t => t.date === d);
+  const planned = tasks.filter(t => t.date === d && !isFixedTask(t));
   const hw = tasks.filter(t => t.category === '作业' && t.due && !t.done && t.due >= addDays(d, -7) && t.due <= addDays(d, HW_SHOW));
   const seen = new Set();
   const list = [];
@@ -204,7 +214,7 @@ function renderToday() {
   const focus = pending.find(it => it.type === 'task' && it.t.category !== '固定课程') || null;
   const doneCount = list.length - pending.length;
   const d = today();
-  const overdue = allTasks().filter(t => !t.done && ((t.due && t.due < addDays(d, -7)) || (!t.due && t.date && t.date < d)))
+  const overdue = openTasks().filter(t => !t.done && ((t.due && t.due < addDays(d, -7)) || (!t.due && t.date && t.date < d)))
     .sort((a, b) => String(a.due || a.date).localeCompare(String(b.due || b.date))).slice(0, 12);
 
   const focusCard = focus ? `<section class="focus-card">
@@ -252,7 +262,7 @@ function renderWeek() {
   const s = settings();
   const dates = Array.from({ length: 7 }, (_, i) => addDays(week, i));
   const inst = fixedInstances(store.all('fixed'), s, week, 7).map(f => ({ type: 'fixed', f }));
-  const tks = allTasks().filter(t => t.date && dates.includes(t.date)).map(t => ({ type: 'task', t }));
+  const tks = openTasks().filter(t => t.date && dates.includes(t.date)).map(t => ({ type: 'task', t }));
   const items = [...inst, ...tks];
   const flat = items.map(it => it.type === 'fixed' ? it.f : it.t);
   const bad = conflicts(flat);
@@ -287,7 +297,7 @@ function renderWeek() {
     <span class="legend-item"><i class="swatch sw-life"></i>生活</span>
   </div>`;
 
-  const unplaced = allTasks().filter(t => t.date && dates.includes(t.date) && !t.slot && t.category !== '固定课程');
+  const unplaced = openTasks().filter(t => t.date && dates.includes(t.date) && !t.slot);
 
   return `<section class="panel">
     <div class="toolbar">
@@ -472,7 +482,7 @@ function taskForm(t = {}) {
       ${input('日期', 'date', t.date || today(), 'date', 'required')}
       <label>时段<select name="slot"><option value="">不放进时段</option>${SLOTS.map(sl => `<option value="${sl.key}" ${sl.key === t.slot ? 'selected' : ''}>${sl.key} ${sl.start}</option>`).join('')}</select></label>
       ${input('预计分钟', 'duration', t.duration || 30, 'number', 'required min="5" max="240" step="5"')}
-      <label>分类<select name="category">${['学习', '作业', '固定课程', '复习', '科研', '生活', '自定义'].map(x => `<option ${x === t.category ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label>分类<select name="category">${['学习', '作业', '复习', '科研', '生活', '自定义'].map(x => `<option ${x === t.category ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
       <label>课程<select name="courseId"><option value="">独立任务</option>${store.all('course').map(c => `<option value="${esc(c.id)}" ${c.id === t.courseId ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
       <label>章节<select name="chapterId"><option value="">未关联</option>${store.all('chapter').map(c => `<option value="${esc(c.id)}" ${c.id === t.chapterId ? 'selected' : ''}>${esc(store.get(c.courseId)?.title)} / ${esc(c.title)}</option>`).join('')}</select></label>
     </div>
@@ -657,7 +667,7 @@ async function reseedData() {
     const cur = store.get(c.id);
     if (cur && cur.weight == null) await store.put({ ...cur, weight: c.weight });
   }
-  await putSetting({ seedVersion: 4 });
+  await putSetting({ seedVersion: 5 });
   await refreshAuto();
   render(); await cloud.sync(); toast('课程数据已重建');
 }
@@ -835,7 +845,7 @@ document.addEventListener('pointerup', async () => {
   render(); await cloud.sync();
   const s = settings();
   const inst = fixedInstances(store.all('fixed'), s, date, 1);
-  const dayTasks = allTasks().filter(x => x.date === date);
+  const dayTasks = openTasks().filter(x => x.date === date);
   const bad = conflicts([...inst, ...dayTasks]);
   if (bad.has(t.id)) toast('⚠ 这个时段有冲突，已经标出来了');
   else toast('已移动到 ' + shortDate(date) + ' ' + slot);

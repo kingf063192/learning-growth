@@ -39,7 +39,7 @@ export const THEME_KEYS = THEMES.map(t => t.key);
 /* ── 默认设置 ── */
 export const defaults = {
   confirmed: true,
-  seedVersion: 4,
+  seedVersion: 5,
   semester: '2026-09-07',      // 第一学期第 1 周周一
   semester2: '2027-03-01',     // 第二学期第 1 周周一
   examStart: '2026-12-28',     // 期末考试开始
@@ -91,10 +91,10 @@ export function fixedInstances(fixedRecords, s, from, days = 7) {
   return out;
 }
 
-/* ── 冲突：同一天、时间真实重叠 ── */
+/* ── 冲突：同一天、时间真实重叠。soft=true 的固定日程（如请假去的复诊）不算冲突 ── */
 export function conflicts(items) {
   const bad = new Set();
-  const list = items.filter(x => x && x.date && x.start && x.end);
+  const list = items.filter(x => x && x.date && x.start && x.end && !x.soft);
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
       const a = list[i], b = list[j];
