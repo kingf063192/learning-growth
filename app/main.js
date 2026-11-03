@@ -966,17 +966,22 @@ function homeworkSpecs(){
     if(wed>=t)out.push({id:`hw:cook:${wed}`,courseId:'g-cook',title:`烹饪化学 · 实训报告（${wed.slice(5)}课后）`,date:addDays(wed,7),duration:40});
     if(wk<=12&&wed>=t)out.push({id:`hw:inno:${wed}`,courseId:'extra-2',title:`创新创业 · 学习通作业（${wed.slice(5)}课后）`,date:addDays(wed,7),duration:30});
   }
-  [3,6,9,12,15].forEach((w,i)=>{
-    out.push({id:`hw:org:${w}`,courseId:'g-org',title:`有机化学 · 第 ${i+1} 次书面作业`,date:'2027-01-08',duration:45});
-  });
+  const orgStart=addDays(t,14), orgEnd='2027-01-08';
+  const orgSpan=Math.max(1,Math.round((new Date(orgEnd+'T12:00')-new Date(orgStart+'T12:00'))/86400000));
+  for(let i=0;i<5;i++){
+    const due=addDays(orgStart,Math.round(orgSpan*i/4));
+    out.push({id:`hw:org:${i+1}`,courseId:'g-org',title:`有机化学 · 第 ${i+1} 次书面作业`,date:due,duration:45});
+  }
   out.push({id:'hw:lit:1',courseId:'extra-1',title:'文献检索 · 开题报告',date:addDays(t,7),duration:60});
   return out;
 }
 async function ensureHomeworkRecords(){
   const t=today();
-  for(const r of homeworkSpecs()){
+  const specs=homeworkSpecs();
+  for(const r of specs){
     if(r.date<t)continue;
-    if(store.get(r.id))continue;
+    const old=store.get(r.id);
+    if(old){ if(r.id.startsWith('hw:org:')&&old.date!==r.date)await store.put({...old,date:r.date}); continue; }
     await store.put({...r,kind:'task',category:'课程',done:false,start:'',end:''});
   }
 }
