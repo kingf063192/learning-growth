@@ -708,3 +708,115 @@ renderCourses = (function(prev){
     return html;
   };
 })(renderCourses);
+
+/* ===== 行程：固定课表 + 彩色分类 + 可拖动 ===== */
+const CAT_COLORS={
+  thesis:{bg:'#f1ebff',bd:'#c9b6f2',tx:'#5b3fa8'},
+  course:{bg:'#e8f0ff',bd:'#b6cdf7',tx:'#2f5fae'},
+  exam:{bg:'#e6f6ee',bd:'#b3e0c9',tx:'#1f7a52'},
+  interest:{bg:'#fdeee3',bd:'#f3c9a8',tx:'#a55a25'},
+  life:{bg:'#f1f2f4',bd:'#d8dade',tx:'#61666e'},
+  class:{bg:'#eaf1ff',bd:'#c3d6f8',tx:'#2f5fae'}
+};
+const EXAM_IDS=['g-eng','g-biochem','g-cell','g-politics'];
+function colorOf(t){
+  if(t.courseId==='g-thesis')return CAT_COLORS.thesis;
+  if(t.fixedLike)return CAT_COLORS.class;
+  if(EXAM_IDS.includes(t.courseId))return CAT_COLORS.exam;
+  if(t.category==='课程')return CAT_COLORS.course;
+  if(t.category==='兴趣')return CAT_COLORS.interest;
+  if(t.category==='生活')return CAT_COLORS.life;
+  return CAT_COLORS.course;
+}
+function semWeekOf(d){const s=settings().semester||'2026-09-07';return Math.floor((new Date(d+'T12:00')-new Date(s+'T12:00'))/604800000)+1}
+function fixedForDay(d){
+  const wd=new Date(d+'T12:00').getDay(), wk=semWeekOf(d), slots=settings().slots||DEF_SLOTS, out=[];
+  store.all('fixed').forEach(f=>{
+    if(f.wd!==wd||wk<f.from||wk>f.to)return;
+    const sp=slots[f.slot]||DEF_SLOTS[f.slot]; if(!sp)return;
+    out.push({id:'F:'+f.id+':'+d,title:f.title,date:d,start:sp[0],end:sp[1],category:f.cat,fixedLike:true,note:f.note});
+  });
+  return out;
+}
+
+renderWeek = function(){
+  const dates=Array.from({length:7},(_,i)=>addDays(week,i));
+  const todayStr=today();
+  const rows=Array.from({length:16},(_,i)=>i+7);
+  return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}<b style="margin-left:auto">${week} — ${addDays(week,6)}</b></div>
+  <p class="meta">蓝色=上课，紫色=论文，绿色=考研，橙色=兴趣，灰色=生活；<b>带锁的不能拖，其余可拖动改时间</b>。</p>
+  <div class="week-scroll"><div class="week-grid">
+    <div class="wg-corner"></div>${dates.map((d,i)=>`<div class="wg-head ${d===todayStr?'today':''}">${['一','二','三','四','五','六','日'][i]}<br><span>${d.slice(5)}</span></div>`).join('')}
+    ${rows.map(h=>`<div class="wg-time">${String(h).padStart(2,'0')}:00</div>${dates.map(d=>{
+      const evs=[...fixedForDay(d),...tasks().filter(t=>t.date===d&&t.start&&minutes(t.start)>=h*60&&minutes(t.start)<(h+1)*60)];
+      return `<div class="wg-cell ${d===todayStr?'today':''}" data-cell="${d}:${h}">${evs.map(t=>{
+        const c=colorOf(t), lock=!!t.fixedLike;
+        const hgt=Math.max(26,((m2(t.end||t.start)||(h*60+30))-(m2(t.start)||h*60))*0.8);
+        return `<button class="wg-ev ${lock?'locked':''}" data-tid="${esc(t.id)}" data-lock="${lock?1:0}"
+          ${lock?'':'draggable="true"'} style="background:${c.bg};border-color:${c.bd};color:${c.tx};height:${hgt}px">
+          ${lock?'🔒 ':''}<b>${esc(t.title)}</b><span>${esc(t.start||'')}</span></button>`;
+      }).join('')}</div>`;
+    }).join('')}`).join('')}
+  </div></div></div>`;
+};
+
+/* 拖动：桌面用 HTML5 DnD，iPad 用指针长按拖动 */
+let dragId=null,dragLock=false,ghost=null;
+document.addEventListener('dragstart',e=>{
+  const el=e.target.closest&&e.target.closest('.wg-ev'); if(!el||el.dataset.lock==='1')return;
+  dragId=el.dataset.tid; dragLock=false; e.dataTransfer.setData('text/plain',dragId);
+},true);
+document.addEventListener('dragover',e=>{
+  const cell=e.target.closest&&e.target.closest('[data-cell]'); if(cell&&dragId){e.preventDefault();cell.classList.add('dragover')}
+},true);
+document.addEventListener('dragleave',e=>{
+  const cell=e.target.closest&&e.target.closest('[data-cell]'); if(cell)cell.classList.remove('dragover');
+},true);
+document.addEventListener('drop',async e=>{
+  const cell=e.target.closest&&e.target.closest('[data-cell]'); if(!cell||!dragId)return;
+  e.preventDefault();cell.classList.remove('dragover');
+  const [d,h]=cell.dataset.cell.split(':');
+  const t=store.get(dragId);
+  if(t){
+    const dur=Number(t.duration)||30, st=(+h)*60;
+    await store.put({...t,date:d,start:h2(st),end:h2(st+dur),locked:false});
+    dragId=null;render();try{await cloud.sync()}catch(err){}
+  }
+},true);
+
+let pressTimer=null,pressing=null,ghostEl=null;
+document.addEventListener('pointerdown',e=>{
+  const el=e.target.closest&&e.target.closest('.wg-ev');
+  if(!el||el.dataset.lock==='1')return;
+  pressing={id:el.dataset.tid,x:e.clientX,y:e.clientY,moved:false};
+  pressTimer=setTimeout(()=>{
+    if(!pressing)return;
+    dragId=pressing.id;
+    ghostEl=el.cloneNode(true);ghostEl.style.cssText+=';position:fixed;opacity:.85;pointer-events:none;z-index:999;width:'+el.offsetWidth+'px';
+    document.body.appendChild(ghostEl);moveGhost(pressing.x,pressing.y);
+  },280);
+},true);
+function moveGhost(x,y){if(!ghostEl)return;ghostEl.style.left=(x-40)+'px';ghostEl.style.top=(y-18)+'px'}
+document.addEventListener('pointermove',e=>{
+  if(!pressing)return;
+  if(Math.abs(e.clientX-pressing.x)>8||Math.abs(e.clientY-pressing.y)>8)pressing.moved=true;
+  if(pressing.moved&&!dragId)clearTimeout(pressTimer);
+  if(ghostEl)moveGhost(e.clientX,e.clientY);
+},true);
+document.addEventListener('pointerup',async e=>{
+  clearTimeout(pressTimer);
+  if(ghostEl){ghostEl.remove();ghostEl=null}
+  if(dragId){
+    const cell=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-cell]');
+    if(cell){
+      const [d,h]=cell.dataset.cell.split(':');
+      const t=store.get(dragId);
+      if(t){const dur=Number(t.duration)||30, st=(+h)*60;
+        await store.put({...t,date:d,start:h2(st),end:h2(st+dur),locked:false});
+        try{await cloud.sync()}catch(err){}
+      }
+    }
+    dragId=null;render();
+  }
+  pressing=null;
+},true);
