@@ -62,9 +62,10 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--blue)}
 <script>
 const KEY='growth-lite-v1';
 const THEMES=[['蓝','#2f6fb3'],['青','#1f7a52'],['紫','#6b4bb8'],['橙','#b8621f'],['玫','#b43b70'],['墨','#2f3337']];
-const CAT={'专业':{bg:'#e8f0ff',bd:'#b6cdf7',tx:'#2f5fae'},
+const CAT={'课程':{bg:'#e8f0ff',bd:'#b6cdf7',tx:'#2f5fae'},
+ '专业':{bg:'#e6f6ee',bd:'#b3e0c9',tx:'#1f7a52'},
  '兴趣':{bg:'#fdeee3',bd:'#f3c9a8',tx:'#a55a25'},
- '游戏':{bg:'#e6f6ee',bd:'#b3e0c9',tx:'#1f7a52'},
+ '游戏':{bg:'#fdeee3',bd:'#f3c9a8',tx:'#a55a25'},
  '论文':{bg:'#f1ebff',bd:'#c9b6f2',tx:'#5b3fa8'},
  '生活':{bg:'#f1f2f4',bd:'#d8dade',tx:'#61666e'}};
 const SLOTS=[['早','08:30','10:10'],['上午','10:25','12:05'],['下午','14:00','17:35'],['傍晚','18:30','19:30'],['晚上','19:30','22:00'],['睡前','22:00','22:30']];
@@ -191,7 +192,7 @@ function renderWeek(){
     html+='<tr><th class="slot">'+sl+'<br><span class="small">'+s+'</span></th>';
     for(let wd=0;wd<7;wd++){
       const d=days[wd];const items=[];
-      FIXED.filter(f=>f[0]===((new Date(d+'T12:00').getDay()+6)%7)&&f[1]===sl).forEach(f=>items.push({title:f[2],cat:'专业',lock:true}));
+      FIXED.filter(f=>f[0]===((new Date(d+'T12:00').getDay()+6)%7)&&f[1]===sl).forEach(f=>items.push({title:f[2],cat:'课程',lock:true}));
       S.tasks.filter(x=>x.date===d&&!x.hw).forEach(x=>{
         if(sl==='晚上'&&x.course==='thesis')items.push({title:x.title,cat:'论文',lock:false});
         else if(x.start===s||(!x.start&&sl==='下午'&&wd===6))items.push({title:x.title,cat:catOf(x.course),lock:false});
