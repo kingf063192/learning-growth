@@ -162,3 +162,57 @@ renderWeek = function(){
   const bad=new Set(conflicts(list));
   return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}${action('＋ 任务','newTask')}</div><p class="meta"><b>${week} — ${addDays(week,6)}</b> · 整周清单，点标题看详情</p>${dates.map((d,i)=>{const day=list.filter(t=>t.date===d).sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'));return `<div class="agenda-day"><div class="dayhead ${d===today()?'today':''}">${['周一','周二','周三','周四','周五','周六','周日'][i]} ${d.slice(5)} ${d===today()?'· 今天':''}</div>${day.map(t=>row(t)+(bad.has(t.id)?'<p class="meta danger">⚠ 与其它安排重叠</p>':'')).join('')||'<p class="meta">空</p>'}</div>`;}).join('')}</div>`;
 };
+
+/* ===== 今日：勾选完成 / × 拆成更小再排 ===== */
+function withSplit(t){
+  const h=row(t), i=h.lastIndexOf('</div>');
+  return i<0?h:h.slice(0,i)+`<button class="x-btn" data-split="${esc(t.id)}" title="不想做 / 没做完：拆成更小的步骤">×</button>`+h.slice(i);
+}
+async function splitTask(key){
+  const t=store.get(key);
+  if(!t){toast('找不到这条任务');return}
+  const baseTitle=String(t.title||'任务').replace(/（\d+\/\d+）$/,'');
+  const total=Number(t.duration)||30;
+  const parts=total>=60?3:2;
+  const per=Math.max(10,Math.round(total/parts/5)*5);
+  const rows=[];
+  for(let k=0;k<parts;k++){
+    const date=addDays(today(),k);
+    const rec={
+      id:k===0?t.id:(t.id+'-s'+k),
+      kind:'task',
+      courseId:t.courseId, chapterId:t.chapterId,
+      title:baseTitle+'（'+(k+1)+'/'+parts+'）',
+      category:t.category||'待办',
+      duration:per, order:t.order,
+      date, start:t.start||'', end:t.end||'',
+      done:false, splitFrom:k===0?undefined:(t.splitFrom||t.id)
+    };
+    rows.push(rec);
+  }
+  for(const r of rows)await store.put(r);
+  render();
+  try{await cloud.sync()}catch(e){}
+  toast('已拆成 '+parts+' 小步，从今天起每天一步。做完一步算一步，不着急。');
+}
+renderToday = function(){
+  const list=tasks().filter(t=>t.date===today());
+  const dn=list.filter(t=>t.done).length;
+  const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
+  const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
+  const untimed=list.filter(t=>!t.start);
+  const overdue=tasks().filter(t=>!t.done&&t.date&&t.date<today());
+  const all=dn===list.length&&list.length>0;
+  return `<div class="panel"><div class="toolbar"><h2>今日安排</h2>${action('＋ 任务','newTask')}</div>
+  <p class="today-line">${all?'今天全部完成 🎉':'已完成 '+dn+' / '+list.length} · 今日 +${award} 分 · 连续 ${streakDays()} 天</p>
+  ${timed.map(withSplit).join('')||empty('今天没有已定时的任务')}
+  ${untimed.length?'<h3>时间待定</h3>'+untimed.map(withSplit).join(''):''}
+  </div>
+  ${overdue.length?`<details class="panel"><summary>没做完的（${overdue.length}）</summary><p class="meta">点 × 可以拆小并重新排到接下来几天。</p>${overdue.slice(0,12).map(withSplit).join('')}</details>`:''}`;
+};
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-split]');
+  if(!b)return;
+  e.preventDefault();e.stopImmediatePropagation();
+  splitTask(b.getAttribute('data-split'));
+},true);
