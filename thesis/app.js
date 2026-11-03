@@ -34,6 +34,20 @@ async function load(){
 }
 
 
+
+async function goMyThesis(){
+  if(!session)return false;
+  try{
+    const r=await fetch(config.url+'/rest/v1/thesis_share?select=*&owner_id=eq.'+session.user.id+'&order=created_at.desc',
+      {headers:Object.assign(H(),{Authorization:'Bearer '+session.access_token})});
+    const list=await r.json();
+    if(!Array.isArray(list)||!list.length)return false;
+    const pick=list.find(x=>!x.revoked)||list[0];
+    code=pick.code;localStorage.setItem('thesis-code',code);
+    await load();
+    return true;
+  }catch(e){return false}
+}
 async function doAuth(signup){
   const em=document.getElementById('qEmail'),pw=document.getElementById('qPass');
   const email=(em&&em.value||'').trim(),pass=(pw&&pw.value||'');
@@ -45,7 +59,9 @@ async function doAuth(signup){
     if(!r.ok)throw Error(d.error_description||d.msg||'失败');
     if(!d.access_token){toast('注册成功，去邮箱点确认链接后再登录');return}
     session=d;localStorage.setItem('thesis-session',JSON.stringify(d));
-    await load();toast(signup?'注册成功':'登录成功');
+    const went=await goMyThesis();
+    if(!went){renderOwner()}
+    toast(signup?'注册成功':'登录成功');
   }catch(e){toast(e.message)}
 }
 function render(){
@@ -178,9 +194,10 @@ async function loadCodes(){
     const link=location.origin+location.pathname+'?code='+encodeURIComponent(s.code);
     return `<div class="codebox"><b>${esc(s.code)}</b> ${s.revoked?'<span class="tag">已停用</span>':''}<p class="meta">${esc(s.advisor||'未命名导师')} · 创建 ${esc((s.created_at||'').slice(0,10))}</p>
       <p class="meta">导师链接：<a href="${link}">${esc(link)}</a></p>
-      <button data-copy="${esc(link)}">复制链接</button>${s.revoked?'':`<button data-revoke="${esc(s.id)}">停用</button>`}<button class="danger" data-delcode="${esc(s.id)}">删除</button></div>`;
+      <button class="primary" data-enter="${esc(s.code)}">进入</button><button data-copy="${esc(link)}">复制链接</button>${s.revoked?'':`<button data-revoke="${esc(s.id)}">停用</button>`}<button class="danger" data-delcode="${esc(s.id)}">删除</button></div>`;
   }).join('')||'<p class="meta">还没有分享码</p>';
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(b.getAttribute('data-copy'));toast('链接已复制')});
+  document.querySelectorAll('[data-enter]').forEach(b=>b.onclick=async()=>{code=b.getAttribute('data-enter');localStorage.setItem('thesis-code',code);await load()});
   document.querySelectorAll('[data-delcode]').forEach(b=>b.onclick=async()=>{
     if(!confirm('彻底删除这个分享码？它下面的阶段、评语、文件和上传的文档都会一起删掉，无法恢复。'))return;
     try{await rpc('thesis_share_delete',{p_id:b.getAttribute('data-delcode')});toast('已删除');loadCodes()}catch(e){toast(e.message)}
@@ -333,7 +350,7 @@ render = function(){
     try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:authorName(),p_body:body});load()}catch(e){toast(e.message)}
   });
 };
-load();
+(async()=>{ if(session&&!code){ if(await goMyThesis())return } load() })();
 
 /* ===== 页签 / 阶段管理 / AI 导入导出 ===== */
 let tab='stage', manage=false, editStage=null;
@@ -472,6 +489,7 @@ render = function(){
   app.innerHTML=`<div class="tabs">${tabs.map(([k,n])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}${tPicker()}`;
 
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.getAttribute('data-tab');render()});
+  const mc=$('#myCodes');if(mc)mc.onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');renderOwner()};
   const ql=$('#qLogin');if(ql)ql.onclick=()=>doAuth(false);
   const qs=$('#qSignup');if(qs)qs.onclick=()=>doAuth(true);
   const rf=$('#refresh');if(rf)rf.onclick=()=>load();
@@ -608,7 +626,7 @@ render = function(){
     <div class="form"><input id="qEmail" placeholder="邮箱" type="email"><input id="qPass" placeholder="密码" type="password"><button class="primary" id="qLogin">登录</button><button id="qSignup">注册</button></div></div>`:'';
   app.innerHTML=`${loginPanel}
   <div class="panel">
-    <div class="rolebar"><span class="rolebadge ${isOwner?'owner':'advisor'}">${isOwner?'学生端':'导师端'}</span><span class="meta">${isOwner?'学生（已登录）':'导师（查看与确认，未登录）'}</span></div>
+    <div class="rolebar"><span class="rolebadge ${isOwner?'owner':'advisor'}">${isOwner?'学生端':'导师端'}</span><span class="meta">${isOwner?'学生（已登录）':'导师（查看与确认，未登录）'}</span>${isOwner?'<a href="#" id="myCodes" class="link">我的分享码</a>':''}</div>
     <div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
     <p class="meta">${doneN}/${total} 阶段双方确认 · 都确认后进入下一阶段</p>
