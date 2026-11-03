@@ -231,8 +231,34 @@ details.panel[open]>summary::before{content:"▾ "}
 .ms.none small{color:var(--lock)}
 .ms input{width:auto;min-height:30px;padding:1px 6px;font-size:12.5px}
 
+/* ── 底部资料区：两列卡片，不再一条条拉满整行 ─────────────────── */
+.extras{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:12px;align-items:start}
+.extras>*{margin-bottom:0}
+.extras details.panel>summary{display:flex;align-items:center;gap:8px;padding:2px 0}
+.extras details.panel[open]>summary{padding-bottom:8px;border-bottom:1px dashed var(--line);margin-bottom:8px}
+.cnt{margin-left:auto;font-size:11px;font-weight:700;padding:1px 8px;border-radius:99px;
+     background:var(--accent-soft);color:var(--accent-ink);white-space:nowrap}
+.cnt.zero{background:var(--lock-soft);color:var(--lock)}
+
+/* 阶段卡：清单完成度 */
+.sbar{height:5px;background:var(--lock-soft);border-radius:99px;overflow:hidden;margin:10px 0 4px}
+.sbar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .25s}
+.sbar-txt{margin:0 0 2px;font-size:11.5px}
+
+/* 里程碑：两边都能改 */
+.ms input{min-height:30px;padding:1px 6px;font-size:12.5px}
+.ms-del{border:none;background:none;color:var(--muted);font-size:15px;line-height:1;padding:0 2px;min-height:24px;cursor:pointer}
+.ms-del:hover{color:var(--danger)}
+.ms-hist{margin:8px 0 0;font-size:11.5px;border-left:2px solid var(--line);padding-left:8px;overflow-wrap:anywhere}
+
+/* 模板小提示 */
+.tplhint{font-size:11.5px;color:var(--muted);margin:2px 0 0;line-height:1.5}
+
 /* 响应式：手机一列、无横向滚动；桌面两列 */
 @media(min-width:1000px){
+  .extras{grid-template-columns:1fr 1fr}
+  .todo-grid{grid-template-columns:repeat(4,1fr)}
+  .extras>*:last-child{grid-column:1/-1}
   .wrap{max-width:1080px;padding:26px 24px 64px}
   .panel{padding:18px 20px}
   #stages-grid{grid-template-columns:1fr 1fr}
@@ -242,8 +268,9 @@ details.panel[open]>summary::before{content:"▾ "}
 @media(max-width:719px){
   input,textarea,select{font-size:16px}
   .todo-grid{grid-template-columns:repeat(2,1fr)}
-  .ms{flex:1 1 44%}
+  .ms{flex:1 1 100%}
   .ms input{width:100%}
+  .extras{grid-template-columns:1fr}
   .wrap{padding:12px 10px 64px}
   .panel{padding:12px;border-radius:12px}
   .pct{font-size:24px}

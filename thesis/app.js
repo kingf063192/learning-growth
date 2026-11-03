@@ -309,6 +309,13 @@ const isNewer = (iso, since) => !!iso && (!since || String(iso) > since);
 const studentNameKey = () => 'thesis:studentname:' + code;
 const studentName = () => { try { return (localStorage.getItem(studentNameKey()) || '').trim() || '同学'; } catch { return '同学'; } };
 
+/* 里程碑保存：顺带记一条「谁 什么时候 从什么 改成什么」 */
+function saveMilestones(ms, hist) {
+  const meta = { ...metaOf(), milestones: ms };
+  if (hist) meta.msHistory = [...(metaOf().msHistory || []), hist].slice(-10);
+  return saveAux({ meta });
+}
+
 /* 「就此文件评语」预填 */
 const commentDrafts = {};
 
@@ -390,6 +397,10 @@ function stageCard(st, i, sm, ds) {
   const stt = statusOf(st, i, sm, ds);
   const locked = stt.key === 'locked';
   const cmtN = commentsFor(st.id).length;
+  const itemTotal = (st.items || []).length;
+  const itemDone = (st.items || []).reduce((n, _, j) => n + (normalizeCheck((s.checks || {})[j]).done ? 1 : 0), 0);
+  const itemPct = itemTotal ? Math.round(itemDone / itemTotal * 100) : 0;
+  const itemBar = locked ? '' : `<div class="sbar"><i style="width:${itemPct}%"></i></div><p class="meta sbar-txt">清单完成 ${itemDone}/${itemTotal}</p>`;
   const manageBtns = isStudent() && manage
     ? `<div class="sop"><button class="mini" data-up="${esc(st.id)}" title="上移">↑</button><button class="mini" data-dn="${esc(st.id)}" title="下移">↓</button><button class="mini" data-editst="${esc(st.id)}">编辑</button><button class="mini danger" data-delst="${esc(st.id)}">删</button></div>`
     : '';
@@ -408,6 +419,7 @@ function stageCard(st, i, sm, ds) {
       <span class="sb ${stt.key === 'done' ? 'done' : stt.key === 'wait' ? 'wait' : stt.key === 'locked' ? 'lock' : 'now'}">${stt.label}</span>
       ${manageBtns}
     </div>
+    ${itemBar}
     <div class="gate"><span class="${s.owner_ok ? 'y' : ''}">学生${s.owner_ok ? ' ✓ 已确认' : ' 待确认'}</span><span class="${s.advisor_ok ? 'y' : ''}">导师${s.advisor_ok ? ' ✓ 已确认' : ' 待确认'}</span></div>
     ${locked ? '<p class="meta">上一阶段双方确认后解锁。</p>' : `
       <ul class="cl">${(st.items || []).map((it, j) => itemRow(st, it, j, s)).join('') || '<li class="meta">这个阶段还没有清单条目，学生可在「管理阶段 → 编辑」里补充。</li>'}</ul>
@@ -430,10 +442,24 @@ function stageCard(st, i, sm, ds) {
   </article>`;
 }
 
+/* ── 全部文件卡片 ────────────────────────────────────────────── */
+function allFilesCard(allFiles, ds, labelOf) {
+  if (!allFiles.length) return '';
+  return `<details class="panel" id="allFilesPanel"><summary>全部文件${countBadge(allFiles.length)}</summary>
+    <div class="files">${allFiles.map(f => {
+      const st = ds.find(x => x.id === f.task_id);
+      const lb = labelOf[f.id] || {};
+      return `<div class="fitem"><a href="${esc(fileUrl(f.path))}" target="_blank" rel="noopener">${esc(f.name)}</a>
+        <span class="vtag ${lb.latest ? 'latest' : ''}">${esc(lb.text || '')}</span>
+        <span class="meta">${st ? esc(st.t) + ' · ' : ''}${esc(f.uploaded_by || '')} · ${esc((f.created_at || '').slice(0, 10))}</span></div>`;
+    }).join('')}</div></details>`;
+}
+
 /* ── 留言板 ──────────────────────────────────────────────────── */
+function countBadge(n) { return `<span class="cnt ${n ? '' : 'zero'}">${n}</span>`; }
 function boardCard() {
   const list = commentsFor(null);
-  return `<details class="panel" id="boardPanel"><summary>留言板 · ${list.length}</summary>
+  return `<details class="panel" id="boardPanel"><summary>留言板${countBadge(list.length)}</summary>
     <div>${list.map(commentHtml).join('') || '<p class="meta">还没有留言</p>'}</div>
     <div class="form">
       ${kindSelect('id', 'bKind')}
@@ -459,31 +485,32 @@ async function saveAux(patch = {}) {
 }
 function researchPanels() {
   const refs = refsOf(), logs = logsOf();
-  return `<details class="panel" id="refPanel"><summary>文献库 · ${refs.length}</summary>
+  return `<details class="panel" id="refPanel"><summary>文献库${countBadge(refs.length)}</summary>
     <div class="form">
       <div class="form-row"><input id="rA" placeholder="作者 / 年份"><input id="rD" placeholder="DOI 或期刊"></div>
       <input id="rT" placeholder="标题">
       <textarea id="rC" placeholder="一句话结论 / 用在哪一节"></textarea>
-      <button class="primary" id="rAdd">加入文献库</button>
+      <div class="sf"><button class="primary" id="rAdd">加入文献库</button><button id="rPaste">批量粘贴…</button></div>
+      <p class="tplhint">批量粘贴格式：一行一条 <code>作者|年份|标题|DOI|结论</code>，例：<br>张三|2023|黄晶果果浆品质|10.1016/j.foodchem|用在前言</p>
     </div>
     ${refs.map((r, i) => `<div class="codebox"><b>${esc(r.t || '')}</b>
       <p class="meta">${esc(r.a || '')}${r.d ? ' · ' + esc(r.d) : ''}</p>
       ${r.c ? `<p>${esc(r.c)}</p>` : ''}
       <button class="danger" data-refdel="${i}">删除</button></div>`).join('') || '<p class="meta">还没有文献，学生和导师都可以加。</p>'}
   </details>
-  <details class="panel" id="logPanel"><summary>实验记录 · ${logs.length}</summary>
+  <details class="panel" id="logPanel"><summary>实验记录${countBadge(logs.length)}</summary>
     <div class="form">
       <div class="form-row"><input id="lD" type="date" value="${todayStr()}"><input id="lB" placeholder="批次 / 组别"></div>
       <textarea id="lP" placeholder="参数与条件（温度、时间、转速…）"></textarea>
       <textarea id="lR" placeholder="结果与异常"></textarea>
-      <button class="primary" id="lAdd">记一笔</button>
+      <div class="sf"><button class="primary" id="lAdd">记一笔</button><button id="lTpl">填入常用参数</button></div>
     </div>
     ${logs.map((r, i) => `<div class="codebox"><b>${esc(r.d || '')} ${esc(r.b || '')}</b>
       ${r.p ? `<p class="meta">参数：${esc(r.p)}</p>` : ''}
       ${r.r ? `<p>${esc(r.r)}</p>` : ''}
       <button class="danger" data-logdel="${i}">删除</button></div>`).join('') || '<p class="meta">还没有记录，学生和导师都可以记。</p>'}
   </details>
-  <details class="panel"><summary>导出阶段报告</summary>
+  <details class="panel"><summary>导出阶段报告<span class="cnt">.md</span></summary>
     <p class="meta">导出 Markdown：每个阶段的清单与勾选、双方确认状态、修改与批注、评语、文献库、实验记录。可直接发给导师或用于中期检查。</p>
     <button class="primary" id="expBtn">导出 .md</button>
   </details>`;
@@ -664,16 +691,16 @@ function milestonePanel() {
     const d = m.date ? dateDiff(t, m.date) : null;
     const cls = d === null ? 'none' : d < 0 ? 'past' : d <= 7 ? 'urgent' : '';
     const label = d === null ? '未设日期' : d === 0 ? '就是今天' : d < 0 ? `已过 ${-d} 天` : `还有 ${d} 天`;
-    if (isStudent()) {
-      return `<span class="ms ${cls}"><span class="ms-n">${esc(m.name)}</span>
-        <input type="date" data-ms="${i}" value="${esc(m.date || '')}" aria-label="${esc(m.name)}的日期">
-        <small>${label}</small><button class="mini" data-msdel="${i}" title="删除这个里程碑">×</button></span>`;
-    }
-    return `<span class="ms ${cls}"><span class="ms-n">${esc(m.name)}</span><small>${esc(m.date || '未设日期')} · ${label}</small></span>`;
+    return `<span class="ms ${cls}"><span class="ms-n">${esc(m.name)}</span>
+      <input type="date" data-ms="${i}" value="${esc(m.date || '')}" aria-label="${esc(m.name)}的日期">
+      <small>${label}</small><button class="ms-del" data-msdel="${i}" title="删除这个里程碑" aria-label="删除">×</button></span>`;
   }).join('');
+  const hist = (metaOf().msHistory || []).slice(-3).reverse();
   return `<section class="panel milestones">
-    <div class="ms-head"><b>里程碑</b>${isStudent() ? '<button class="mini" id="msAdd">＋ 加一个</button>' : '<span class="meta">学生可编辑，导师只读</span>'}</div>
-    <div class="ms-row">${chips}</div></section>`;
+    <div class="ms-head"><b>里程碑</b><button class="mini" id="msAdd">＋ 加一个</button><span class="meta">学生和导师都能改，改动会留记录</span></div>
+    <div class="ms-row">${chips}</div>
+    ${hist.length ? `<p class="ms-hist">${hist.map(h => `${esc(h.by || '')} ${esc(mmdd(h.at))} ${esc(h.name || '')} ${esc(h.from || '（未设）')} → ${esc(h.to || '（清空）')}`).join('<br>')}</p>` : ''}
+  </section>`;
 }
 
 function mainView() {
@@ -690,6 +717,7 @@ function mainView() {
     labelOf[f.id] = { text: versionLabel(f.name, i), latest: i === groups[k].length - 1 };
   }));
   const staleChase = isAdvisor() ? chaseAllText(ds, sm) : null;
+  const lastUpd = ds.map(st => String((sm[st.id] || {}).updated_at || '').slice(0, 10)).filter(Boolean).sort().pop() || '';
   return `<div class="panel">
     <div class="rolebar">
       <span class="rolebadge ${stu ? 'owner' : 'advisor'}">${stu ? '学生端' : '导师端'}</span>
@@ -705,9 +733,9 @@ function mainView() {
       <p class="meta">邀请码 ${esc(code)}${data.advisor ? ' · ' + esc(data.advisor) : ''}</p></div>
       <div class="pct">${pct}%</div></div>
     <div class="bar"><i style="width:${pct}%"></i></div>
-    <p class="meta">${dn} / ${total} 阶段双方确认 · 上一阶段双方都确认后，下一阶段才解锁</p>
+    <p class="meta">${dn} / ${total} 阶段双方确认 · 上一阶段双方都确认后，下一阶段才解锁${lastUpd ? ' · 上次更新 ' + esc(lastUpd) : ''}</p>
     <div class="manage">
-      ${stu ? `<button id="myCodes">我的邀请码</button><button id="mg">${manage ? '完成管理' : '管理阶段'}</button><button id="add">＋ 新增阶段</button>` : ''}
+      ${stu ? `<button id="myCodes">我的邀请码</button><button id="mg">${manage ? '完成管理' : '管理阶段'}</button><button id="add">＋ 新增阶段</button>${manage ? '<button id="stageTpl">套用标准 12 阶段</button>' : ''}` : ''}
       ${isAdvisor() ? `<button id="chaseAll"${staleChase ? '' : ' disabled title="没有超过 7 天没更新的阶段"'}>复制整体催办</button>` : ''}
       <button id="rf">刷新</button>
     </div>
@@ -716,16 +744,11 @@ function mainView() {
   ${milestonePanel()}
   ${stu && panel === 'codes' ? codesPanel() : ''}
   <div id="stages-grid">${ds.map((st, i) => stageCard(st, i, sm, ds)).join('')}</div>
-  ${boardCard()}
-  ${allFiles.length ? `<details class="panel" id="allFilesPanel"><summary>全部文件 · ${allFiles.length}</summary>
-    <div class="files">${allFiles.map(f => {
-      const st = ds.find(x => x.id === f.task_id);
-      const lb = labelOf[f.id] || {};
-      return `<div class="fitem"><a href="${esc(fileUrl(f.path))}" target="_blank" rel="noopener">${esc(f.name)}</a>
-        <span class="vtag ${lb.latest ? 'latest' : ''}">${esc(lb.text || '')}</span>
-        <span class="meta">${st ? esc(st.t) + ' · ' : ''}${esc(f.uploaded_by || '')} · ${esc((f.created_at || '').slice(0, 10))}</span></div>`;
-    }).join('')}</div></details>` : ''}
-  ${researchPanels()}
+  <section class="extras">
+    ${boardCard()}
+    ${allFilesCard(allFiles, ds, labelOf)}
+    ${researchPanels()}
+  </section>
   <details class="panel"><summary>怎么用</summary>
     <p class="meta">学生登录后生成邀请码，把“导师链接”发给导师。导师打开链接永远是导师端，即使这台浏览器登录过学生账号。</p>
     <p class="meta">每个阶段要「学生确认」和「导师确认」都完成才算通过，下一阶段才解锁。清单条目两边都能勾选、修改和批注，改动会留下痕迹。</p>
@@ -890,15 +913,20 @@ function bindMain() {
     };
   });
 
-  /* ── T5 里程碑（学生可编辑） ── */
+  /* ── T5 里程碑（学生和导师都能改，改动留记录） ── */
   document.querySelectorAll('[data-ms]').forEach(el => {
     el.onchange = async () => {
       const i = +el.getAttribute('data-ms');
       const ms = milestonesOf().slice();
       if (!ms[i]) return;
-      ms[i] = { ...ms[i], date: el.value };
-      try { await saveAux({ meta: { ...metaOf(), milestones: ms } }); toast('里程碑已保存'); }
-      catch (e) { toast(e.message); }
+      const from = ms[i].date || '';
+      const to = el.value || '';
+      if (from === to) return;
+      ms[i] = { ...ms[i], date: to };
+      try {
+        await saveMilestones(ms, { by: author(), at: todayStr(), name: ms[i].name, from: from || '（未设）', to: to || '（清空）' });
+        toast('里程碑已保存');
+      } catch (e) { toast(e.message); }
     };
   });
   const msa = $('#msAdd');
@@ -906,16 +934,21 @@ function bindMain() {
     const name = (prompt('里程碑名称（比如：预答辩）') || '').trim();
     if (!name) return;
     const ms = milestonesOf().concat([{ name, date: '' }]);
-    try { await saveAux({ meta: { ...metaOf(), milestones: ms } }); toast('已添加'); } catch (e) { toast(e.message); }
+    try { await saveMilestones(ms, { by: author(), at: todayStr(), name, from: '', to: '新增' }); toast('已添加'); }
+    catch (e) { toast(e.message); }
   };
   document.querySelectorAll('[data-msdel]').forEach(b => {
     b.onclick = async () => {
       const i = +b.getAttribute('data-msdel');
       const ms = milestonesOf().slice();
       if (!ms[i]) return;
-      if (!confirm(`删除里程碑「${ms[i].name}」？`)) return;
+      const gone = ms[i];
+      if (!confirm(`删除里程碑「${gone.name}」？`)) return;
       ms.splice(i, 1);
-      try { await saveAux({ meta: { ...metaOf(), milestones: ms } }); toast('已删除'); } catch (e) { toast(e.message); }
+      try {
+        await saveMilestones(ms, { by: author(), at: todayStr(), name: gone.name, from: gone.date || '（未设）', to: '删除' });
+        toast('已删除');
+      } catch (e) { toast(e.message); }
     };
   });
 
@@ -1069,6 +1102,48 @@ function bindMain() {
       el.value = '';
     };
   });
+
+  /* ── 模板：文献批量粘贴 ── */
+  const rp = $('#rPaste');
+  if (rp) rp.onclick = () => {
+    openModal(`<h3>批量粘贴文献</h3>
+      <p class="meta">一行一条，用 <code>|</code> 分隔：<b>作者|年份|标题|DOI 或期刊|结论</b><br>
+      例：张三|2023|黄晶果果浆加工品质|10.1016/j.foodchem|用在前言里的工艺对比</p>
+      <textarea id="pasteBox" style="min-height:170px" placeholder="张三|2023|标题|DOI|结论"></textarea>
+      <div class="acts"><button class="primary" id="pasteOk">导入</button><button id="pasteCancel">取消</button></div>`);
+    $('#pasteCancel').onclick = closeModal;
+    $('#pasteOk').onclick = async () => {
+      const lines = ($('#pasteBox').value || '').split('\n').map(x => x.trim()).filter(Boolean);
+      if (!lines.length) { toast('没有可导入的行'); return; }
+      const add = [];
+      for (const ln of lines) {
+        const p = ln.split('|').map(x => x.trim());
+        if (p.length < 2 || !(p[0] || p[2])) continue;
+        add.push({ a: [p[0], p[1]].filter(Boolean).join(' '), t: p[2] || '', d: p[3] || '', c: p[4] || '' });
+      }
+      if (!add.length) { toast('格式不对，至少要「作者|年份」'); return; }
+      try { await saveAux({ refs: refsOf().concat(add) }); closeModal(); toast(`已导入 ${add.length} 条文献`); }
+      catch (e) { toast(e.message); }
+    };
+  };
+
+  /* ── 模板：实验记录常用参数 ── */
+  const lt = $('#lTpl');
+  if (lt) lt.onclick = () => {
+    const el = $('#lP'); if (!el) return;
+    el.value = '温度：℃\n时间：min\n转速 / 功率：rpm / W\n料液比：1:\n样品批号：\n环境温湿度：';
+    el.focus();
+    toast('已填入常用参数模板，按实际改数字');
+  };
+
+  /* ── 模板：标准 12 阶段 ── */
+  const stp = $('#stageTpl');
+  if (stp) stp.onclick = async () => {
+    if (!confirm('用标准 12 阶段模板替换当前阶段定义？\n\n清单勾选和评语按阶段 id 保留；被删掉的阶段会重新出现。')) return;
+    const list = DEFAULT_STAGES.map((x, i) => ({ ...x, items: x.items.slice(), id: 's' + (i + 1) }));
+    try { await rpc('thesis_def_save', { p_code: code, p_defs: list }); await reload(); toast('已套用标准 12 阶段'); }
+    catch (e) { toast(e.message); }
+  };
 
   /* 文献库 */
   const rAdd = $('#rAdd');
