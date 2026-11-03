@@ -915,8 +915,11 @@ render();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then(r => {
     r.update();
-    r.addEventListener('updatefound', () => {
-      r.installing?.addEventListener('statechange', () => { if (r.waiting) toast('新版本已就绪，关闭此应用后重新打开即可更新'); });
-    });
+    /* 只有「本来就已经被旧版本接管」时才提示更新；首次安装不该弹 */
+    if (navigator.serviceWorker.controller) {
+      r.addEventListener('updatefound', () => {
+        r.installing?.addEventListener('statechange', () => { if (r.waiting) toast('新版本已就绪，关闭此应用后重新打开即可更新'); });
+      });
+    }
   }).catch(e => toast('离线缓存未启用：' + e.message));
 }
