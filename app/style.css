@@ -132,3 +132,7 @@ button.big{width:100%;min-height:52px;font-size:16.5px;border-radius:12px}
 .cc-ops{display:flex;gap:6px;margin-top:8px}
 .cc-ops button{min-height:30px;padding:2px 10px;font-size:12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--muted)}
 .cc-ops button.del{color:#b4453f;border-color:#f0c4c4;margin-left:auto}
+
+.swatches{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.sw{width:30px;height:30px;min-height:30px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.sw.on{outline:2px solid var(--pink);outline-offset:2px}
