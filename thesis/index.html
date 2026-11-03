@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fdf2f8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="论文进度">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<title>论文进度 · 导师协作</title>
+<style>
+:root{--pink:#b43b70;--soft:#f9e9ef;--bg:#fcf8fa;--ink:#392c35;--muted:#796b75;--line:#eadce3}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.6;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:18px 16px 60px}
+h1{font-size:18px;margin:0 0 2px}
+h2{font-size:15px;margin:0 0 8px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.meta{color:var(--muted);font-size:12.5px}
+.topline{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.pct{font-size:26px;font-weight:800;color:var(--pink);line-height:1}
+.bar{height:8px;background:#f3e6ec;border-radius:99px;overflow:hidden;margin:10px 0 6px}
+.bar>i{display:block;height:100%;background:var(--pink);border-radius:99px}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font:inherit;color:inherit;cursor:pointer;min-height:36px}
+button.primary{background:var(--pink);border-color:var(--pink);color:#fff}
+input,textarea{border:1px solid var(--line);border-radius:9px;padding:9px 10px;font:inherit;width:100%;background:#fff;min-height:40px}
+textarea{min-height:70px;resize:vertical}
+.form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.task{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;padding:11px 0;border-bottom:1px solid var(--line)}
+.task:last-child{border-bottom:none}
+.task input[type=checkbox]{width:22px;height:22px;min-width:22px;accent-color:var(--pink);margin-top:2px}
+.task .body{flex:1;min-width:150px}
+.task.done .body b{text-decoration:line-through;color:var(--muted)}
+.task .sub{flex-basis:100%;margin:6px 0 0 32px;border-left:2px solid var(--soft);padding-left:10px}
+.subhead{display:flex;justify-content:space-between;align-items:center;margin:10px 0 4px}
+.cmt{border-bottom:1px dashed var(--line);padding:6px 0}
+.cmt p{margin:2px 0 0}
+.upload{display:inline-block;border:1px dashed var(--pink);color:var(--pink);border-radius:9px;padding:7px 12px;cursor:pointer;font-size:13.5px}
+.tag{background:var(--soft);color:var(--pink);border-radius:99px;padding:1px 8px;font-size:11.5px}
+.codebox{border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px;word-break:break-all}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#392c35;color:#fff;padding:9px 16px;border-radius:99px;font-size:13.5px;display:none;z-index:99;max-width:90%}
+a{color:var(--pink)}
+@media(min-width:700px){.wrap{max-width:760px;padding:28px 24px 60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>论文进度</h1>
+  <p class="meta">只同步论文部分；学生与导师都可以勾选、留言、传文件。</p>
+  <div id="app"></div>
+</div>
+<div id="toast" role="status"></div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
