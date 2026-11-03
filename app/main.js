@@ -458,3 +458,70 @@ async function ensureDailyStudy(){
   if(add.length){render();try{await cloud.sync()}catch(e){}}
 }
 ensureDailyStudy();
+
+/* ===== 今天能做的都排进来 + 颜色设计 ===== */
+const PALETTE=['#b43b70','#7c5cd6','#2f8f6b','#c2703a','#3d7dd8','#b8860b','#c2410c','#0e7490'];
+function courseColor(id){const cs=store.all('course');const i=cs.findIndex(c=>c.id===id);return PALETTE[(i<0?0:i)%PALETTE.length]}
+function courseColorOf(t){return courseColor(t.courseId)}
+
+ensureDailyStudy = async function(){
+  const todays=tasks().filter(t=>t.date===today()&&t.category!=='固定课程');
+  const want=4;
+  if(todays.length>=want)return;
+  const cands=tasks().filter(t=>t.category!=='固定课程'&&!t.done&&(!t.date||t.date>today()));
+  const wOf=t=>Number(t.weight)||Number(chapter(t)?.weight)||1;
+  cands.sort((a,b)=>wOf(b)-wOf(a)||((a.order||0)-(b.order||0)));
+  const add=cands.slice(0,want-todays.length);
+  for(const t of add)await store.put({...t,date:today(),start:'',end:''});
+  if(add.length){render();try{await cloud.sync()}catch(e){}}
+};
+
+renderCourses = function(){
+  const cs=store.all('course');
+  let allDone=0,allTot=0;
+  cs.forEach(c=>{const ts=tasks().filter(t=>t.courseId===c.id);ts.forEach(t=>{const w=Number(t.weight)||Number(chapter(t)?.weight)||1;allTot+=w;if(t.done)allDone+=w})});
+  const totalPct=allTot?Math.round(allDone/allTot*100):0;
+  const cards=cs.map(c=>{
+    const ts=tasks().filter(t=>t.courseId===c.id);
+    const p=progress(ts),dn=ts.filter(t=>t.done).length;
+    const chs=store.all('chapter').filter(x=>x.courseId===c.id);
+    const next=ts.filter(t=>!t.done).sort((a,b)=>((a.date||'9999')+(a.start||'99')).localeCompare((b.date||'9999')+(b.start||'99')))[0];
+    const col=courseColor(c.id);
+    return `<div class="panel course-card" style="border-left:4px solid ${col}">
+      <div class="cc-head"><b>${esc(c.title)}</b><span class="cc-pct" style="color:${col}">${p}%</span></div>
+      <div class="progress"><i style="width:${p}%;background:${col}"></i></div>
+      <p class="meta">${dn}/${ts.length} 步 · ${chs.length} 章${next?' · 下一步：'+esc(next.title):' · 已完成'}</p>
+      ${next?`<button class="primary" style="background:${col};border-color:${col}" data-action="detail" data-id="${esc(next.id)}">下一步 →</button>`:''}
+    </div>`;
+  }).join('');
+  return `<div class="panel"><div class="cc-head"><b>总进度</b><span class="cc-pct">${totalPct}%</span></div><div class="progress"><i style="width:${totalPct}%"></i></div><p class="meta">按重要度加权；颜色代表不同科目。</p><div class="toolbar" style="margin-top:8px"><button data-goto="review">复习卡片</button>${action('新增目标','newCourse')}</div></div>
+  <div class="course-list">${cards}</div>${weightPanel()}`;
+};
+
+renderToday = function(){
+  const list=tasks().filter(t=>t.date===today());
+  const dn=list.filter(t=>t.done).length;
+  const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
+  const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
+  const untimed=list.filter(t=>!t.start);
+  const next=tasks().filter(t=>t.date===today()&&!t.done).sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'))[0]||tasks().filter(t=>!t.done).sort((a,b)=>((a.date||'9999')).localeCompare(b.date||'9999'))[0];
+  const allDone=dn===list.length&&list.length>0;
+  const rowC=t=>{
+    const col=courseColorOf(t);
+    return `<div class="row ${t.done?'done':''}"><input type="checkbox" data-task="${esc(t.id)}" ${t.done?'checked':''}>
+      <div class="body"><button class="title" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button>
+      <div class="meta"><span class="tag" style="background:${col}1a;color:${col}">${esc((course(t)||{}).title||t.category||'任务')}</span>${t.start?esc(t.start+'–'+t.end):'今天随时'}</div></div>
+      <button class="mini-btn" data-focus="${esc(t.id)}">2 分钟</button><button class="x-btn" data-split="${esc(t.id)}">×</button></div>`;
+  };
+  return `<div class="panel focus-now">
+    <p class="meta">现在做</p>
+    <h2 class="now-title">${allDone?'今天做完了，去休息 🎉':(next?esc(next.title):'今天没有安排')}</h2>
+    ${next?`<button class="primary big" data-focus="${esc(next.id)}">开始 2 分钟</button>`:''}
+    <p class="today-line">${allDone?'':'已完成 '+dn+' / '+list.length} · 今日 +${award} 分 · 连续 ${streakDays()} 天</p></div>
+  <div class="panel"><div class="toolbar"><h2>今天要做</h2>${action('＋ 任务','newTask')}</div>
+  ${timed.map(rowC).join('')}
+  ${untimed.length?'<h3 style="font-size:13px;color:var(--muted);margin:12px 0 4px">今天的计划（随时做）</h3>'+untimed.map(rowC).join(''):''}
+  ${!list.length?empty('今天没有任务'):''}
+  </div>`;
+};
+ensureDailyStudy();
