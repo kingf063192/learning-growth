@@ -122,7 +122,13 @@ function specs(){
 }
 function ensureHW(){
   const have=new Set(S.tasks.map(x=>x.id));
-  specs().forEach(x=>{if(!have.has(x.id))S.tasks.push({...x,done:false,hw:true})});
+  const limit=addD(today(),7);
+  specs().forEach(x=>{
+    if(x.date>limit)return;              // 下周之后的作业先不显示
+    if(x.course==='lab'&&week()<14)return; // 实验课没开不生成
+    if(have.has(x.id))return;
+    S.tasks.push({...x,done:false,hw:true});
+  });
   save();
 }
 /* 今日任务 */
