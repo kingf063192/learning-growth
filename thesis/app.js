@@ -39,7 +39,7 @@ function render(){
       <p class="meta" style="margin-top:12px">学生本人？<a href="#" id="ownerLink">生成 / 管理分享码</a></p></div>
       <div id="owner"></div>`;
     $('#codeForm').onsubmit=e=>{e.preventDefault();code=$('#codeInput').value.trim().toUpperCase();load()};
-    $('#ownerLink').onclick=e=>{e.preventDefault();renderOwner()};
+    const ol=$('#ownerLink');if(ol)ol.onclick=e=>{e.preventDefault();renderOwner()};
     return;
   }
   const ts=data.tasks||[], doneN=ts.filter(t=>t.done).length, pct=ts.length?Math.round(doneN/ts.length*100):0;
@@ -55,7 +55,7 @@ function render(){
   $('#fTodo').onclick=()=>{filter='todo';render()};
   $('#fAll').onclick=()=>{filter='all';render()};
   $('#refresh').onclick=load;
-  $('#switch').onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');render()};
+  const sw=$('#switch');if(sw)sw.onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');render()};
   $('#gbSend').onclick=async()=>{
     const body=$('#gbBody').value.trim();
     if(!body)return;
@@ -202,9 +202,9 @@ render = function(){
   if(!code||!data){
     app.innerHTML=`<div class="panel"><h2>输入导师分享码</h2><p class="meta">由学生本人提供，形如 THESIS-7K2M</p>
       <form id="codeForm"><input id="codeInput" placeholder="THESIS-XXXX" value="${esc(code)}"><button class="primary">打开</button></form>
-      <p class="meta" style="margin-top:12px">学生本人？<a href="#" id="ownerLink">生成 / 管理分享码</a></p></div><div id="owner"></div>`;
+      ${session?'<p class="meta" style="margin-top:12px">学生本人？<a href="#" id="ownerLink">生成 / 管理分享码</a></p>':''}</div><div id="owner"></div>`;
     $('#codeForm').onsubmit=e=>{e.preventDefault();code=$('#codeInput').value.trim().toUpperCase();load()};
-    $('#ownerLink').onclick=e=>{e.preventDefault();renderOwner()};
+    const ol=$('#ownerLink');if(ol)ol.onclick=e=>{e.preventDefault();renderOwner()};
     return;
   }
   const sm=stageMap(), total=STAGES.length;
@@ -216,7 +216,7 @@ render = function(){
   <div class="panel"><div class="topline"><div><h2>论文进度</h2><p class="meta">导师：${esc(data.advisor||'未命名')} · 分享码 ${esc(code)}</p></div><div class="pct">${pct}%</div></div>
   <div class="bar"><i style="width:${pct}%"></i></div>
   <p class="meta">${doneN} / ${total} 阶段已双方确认 · 每个阶段两边都确认后，才进入下一阶段</p>
-  <div class="row-actions"><button id="refresh">刷新</button><a href="#" id="switch">换分享码</a></div></div>
+  <div class="row-actions"><button id="refresh">刷新</button>${session?'<a href="#" id="switch">换分享码</a>':''}</div></div>
   ${STAGES.map((st,i)=>{
     const s=sm[st.id]||{}, ck=checksOf(sm,st.id);
     const lock=!unlocked(sm,i);
@@ -250,7 +250,7 @@ render = function(){
   <div class="panel"><h2>留言板</h2>${cm.filter(c=>!c.task_id).map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有留言</p>'}
     <div class="form"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></div>`;
   $('#refresh').onclick=()=>load();
-  $('#switch').onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');render()};
+  const sw=$('#switch');if(sw)sw.onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');render()};
   $('#gbSend').onclick=async()=>{
     const body=$('#gbBody').value.trim();
     if(!body)return;
