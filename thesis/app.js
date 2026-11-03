@@ -472,7 +472,9 @@ function studentHome() {
 function bindStudentHome() {
   $('#logoutBtn').onclick = logout;
   $('#createBtn').onclick = createCode;
-  document.querySelectorAll('[data-theme]').forEach(b => { b.onclick = () => setTheme(b.dataset.theme); });
+  /* 注意：必须限定 button，否则会把 <html data-theme> 也选中，
+     给 html 挂上 onclick 后页面任何点击都会触发 render()，折叠区刚打开就被重置。 */
+  document.querySelectorAll('button[data-theme]').forEach(b => { b.onclick = () => setTheme(b.dataset.theme); });
   document.querySelectorAll('[data-enter]').forEach(b => { b.onclick = () => openCode(b.getAttribute('data-enter')); });
   document.querySelectorAll('[data-copy]').forEach(b => { b.onclick = () => copyText(b.getAttribute('data-copy')); });
   document.querySelectorAll('[data-revoke]').forEach(b => { b.onclick = () => revokeCode(b.getAttribute('data-revoke')); });
@@ -583,7 +585,9 @@ function bindMain() {
   $('#exitBtn').onclick = () => { if (isStudent()) logout(); else goBack(); };
   $('#rf').onclick = reload;
   const sl = $('#stuLogin'); if (sl) sl.onclick = loginModal;
-  document.querySelectorAll('[data-theme]').forEach(b => { b.onclick = () => setTheme(b.dataset.theme); });
+  /* 注意：必须限定 button，否则会把 <html data-theme> 也选中，
+     给 html 挂上 onclick 后页面任何点击都会触发 render()，折叠区刚打开就被重置。 */
+  document.querySelectorAll('button[data-theme]').forEach(b => { b.onclick = () => setTheme(b.dataset.theme); });
   const mc = $('#myCodes'); if (mc) mc.onclick = () => { panel = panel === 'codes' ? '' : 'codes'; render(); };
   const mg = $('#mg'); if (mg) mg.onclick = () => { manage = !manage; render(); };
   const ad = $('#add'); if (ad) ad.onclick = () => stageEditor(null);
