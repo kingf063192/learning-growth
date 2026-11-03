@@ -1201,10 +1201,57 @@ async function restoreCourseData(silent){
 })();
 const origSet2=renderSettings;
 renderSettings=function(){
-  return origSet2()+`<details class="panel"><summary>数据恢复</summary><p class="meta">如果课程/章节不见了，点下面按钮重新拉取初始课程数据（不会删你已有的记录）。</p><button class="btn" id="restoreBtn">恢复课程数据</button></details>`;
+  return origSet2()+`<details class="panel"><summary>数据恢复</summary><p class="meta">如果课程/章节不见了，点下面按钮重新拉取初始课程数据（不会删你已有的记录）。</p><button class="btn" id="restoreBtn">恢复课程数据</button><button class="btn" id="restoreOldBtn" style="margin-left:8px">从旧账号数据库恢复</button></details>`;
 };
 document.addEventListener('click',async e=>{
   if(e.target.id!=='restoreBtn')return;
   e.preventDefault();
   try{const n=await restoreCourseData(false);alert('已恢复 '+n+' 条')}catch(err){alert('恢复失败：'+err.message)}
+},true);
+
+/* ===== 从旧账号的浏览器数据库恢复（删号前的数据可能还在本机） ===== */
+async function listLocalDBs(){
+  try{const arr=await indexedDB.databases();return (arr||[]).map(d=>d.name).filter(Boolean)}catch(e){return []}
+}
+function readDBRecords(name){
+  return new Promise((res,rej)=>{
+    const q=indexedDB.open(name);
+    q.onsuccess=()=>{const db=q.result;
+      let tx;try{tx=db.transaction('records').objectStore('records').getAll()}catch(e){db.close();return rej(e)}
+      tx.onsuccess=()=>{const rows=tx.result||[];db.close();res(rows)};
+      tx.onerror=()=>{db.close();rej(tx.error)};
+    };
+    q.onerror=()=>rej(q.error);
+  });
+}
+async function restoreFromOldDBs(){
+  const cur='growth-v4-'+store.name;
+  const dbs=(await listLocalDBs()).filter(n=>n&&n.indexOf('growth-v4-')===0&&n!==cur);
+  if(!dbs.length){alert('没有找到别的本地数据库。\n（如果换过浏览器或清过站点数据，旧数据确实不在了）');return}
+  if(!confirm('发现 '+dbs.length+' 个旧数据库：\n\n'+dbs.join('\n')+'\n\n把它们的数据合并到当前账号？'))return;
+  let added=0,updated=0;
+  for(const name of dbs){
+    let rows=[];try{rows=await readDBRecords(name)}catch(e){continue}
+    for(const r of rows){
+      if(!r||!r.id||r.deleted)continue;
+      const old=store.get(r.id);
+      if(!old){await store.merge([{...r,dirty:true,mutation:id()}]);added++}
+      else if(r.kind==='task'){
+        const merged={...old};
+        if(r.done!==undefined)merged.done=r.done;
+        if(r.date)merged.date=r.date;
+        if(r.note)merged.note=r.note;
+        if(r.everCompleted)merged.everCompleted=true;
+        await store.put(merged);updated++;
+      }
+    }
+  }
+  render();
+  try{await cloud.sync()}catch(e){}
+  alert('恢复完成：新增 '+added+' 条，更新 '+updated+' 条（学习进度、积分、体重、账单都在里面）');
+}
+document.addEventListener('click',async e=>{
+  if(e.target.id!=='restoreOldBtn')return;
+  e.preventDefault();
+  try{await restoreFromOldDBs()}catch(err){alert('恢复失败：'+err.message)}
 },true);
