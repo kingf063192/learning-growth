@@ -18,11 +18,19 @@ export class Cloud{
  async login(email,password,signup=false){if(!this.enabled)throw Error('请先按 README 配置 app/config.js');const s=await this.request(signup?'/auth/v1/signup':'/auth/v1/token?grant_type=password',{email,password},'POST',false);if(!s.access_token)throw Error('注册成功，请先查看邮箱确认链接，然后登录。');this.saveSession(s);return s.user;}
  async refresh(){const run=async()=>{const saved=JSON.parse(localStorage.getItem('growth-session')||'null');if(saved?.user?.id===this.session?.user?.id)this.session=saved;if(this.session?.expires_at*1000<Date.now()+60000){const s=await this.request('/auth/v1/token?grant_type=refresh_token',{refresh_token:this.session.refresh_token},'POST',false);this.saveSession(s)}};if(navigator.locks)await navigator.locks.request('growth-auth-refresh',run);else await run();}
  async logout(){this.generation++;try{if(this.enabled&&navigator.onLine)await this.request('/auth/v1/logout',{})}finally{this.session=null;localStorage.removeItem('growth-session');localStorage.removeItem(this.cursorKey);this.store.close();await new Promise((resolve,reject)=>{const q=indexedDB.deleteDatabase('growth-v4-'+this.store.name);q.onsuccess=resolve;q.onerror=()=>reject(q.error);q.onblocked=()=>reject(Error('请关闭其他页面后退出'))});for(const k of await caches.keys())if(k.startsWith('growth-user-'))await caches.delete(k);}}
+ // 历史遗留的冲突里，如果本机与云端内容其实一模一样，直接采纳云端版本，不用人工处理。
+ async healIdentical(){
+  const rows=this.store.records.filter(r=>r&&r.conflict&&r.conflict.payload&&samePayload(r,r.conflict.payload));
+  if(!rows.length)return 0;
+  const next=rows.map(r=>{const o={...r.conflict.payload,id:r.id,version:r.conflict.version,dirty:false,mutation:r.mutation};delete o.conflict;return o;});
+  await this.store.transaction(next);
+  return rows.length;
+ }
  // A cursor is persisted only after summaries have committed to IndexedDB.
  get cursorKey(){return 'growth-cursor-v2:'+this.store.name}
  async sync(){if(this.pending){await this.pending;return this.sync()}this.pending=this.runSync();try{return await this.pending}finally{this.pending=null}}
  async runSync(){if(!this.enabled||!this.session){this.statusSet('本地模式 · 尚未开启跨设备同步');return}if(!navigator.onLine){this.statusSet('离线待同步');return}const generation=this.generation;this.statusSet('同步中');
- try{await this.refresh();if(this.store.db)this.store.records=await this.store.readAll();
+ try{await this.refresh();if(this.store.db)this.store.records=await this.store.readAll();const healed=await this.healIdentical();if(healed)this.statusSet('已自动合并 '+healed+' 条重复改动');
  const initialHead=Number(await this.request('/rest/v1/rpc/sync_head',{}));const outgoing=[...this.store.records.filter(x=>x.dirty&&!x.conflict)];
  for(const r of outgoing){if(generation!==this.generation)return;const res=await this.request('/rest/v1/rpc/apply_record',{p_id:r.id,p_kind:r.kind,p_payload:r,p_version:r.version,p_mutation:r.mutation});if(generation!==this.generation)return;const live=this.store.get(r.id);if(live?.mutation!==r.mutation)continue;if(res.conflict){const remote=res.conflict;if(samePayload(r,remote.payload))await this.store.transaction([{...remote.payload,version:remote.version,dirty:false,mutation:r.mutation}]);else await this.store.transaction([{...r,conflict:remote}]);}else await this.store.transaction([{...res.record.payload,version:res.record.version,dirty:false,mutation:r.mutation}]);}
  let cursor=this.store.records.length?Number(localStorage.getItem(this.cursorKey)||0):0;const head=outgoing.length?Number(await this.request('/rest/v1/rpc/sync_head',{})):initialHead;
