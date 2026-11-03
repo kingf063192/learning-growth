@@ -112,6 +112,20 @@ a{color:var(--pink)}
 .rolebadge.owner{background:#e8f1fb;color:#2f6fb3}
 .rolebadge.advisor{background:#f0ebfb;color:#6b4bb8}
 .rolebar .link{margin-left:auto;border:none;background:none;color:var(--pink);font-size:12.5px}
+
+.tabs{position:sticky;top:0;z-index:20;background:rgba(252,248,250,.96);padding:8px 0;backdrop-filter:blur(6px)}
+.stage{transition:box-shadow .15s,border-color .15s}
+.stage:hover{box-shadow:0 4px 16px rgba(57,44,53,.08)}
+.sf button:hover{border-color:var(--pink);color:var(--pink)}
+.mini:hover{border-color:var(--pink);color:var(--pink)}
+@media(min-width:1000px){
+  .wrap{max-width:1040px;padding:28px 28px 60px}
+  .panel{padding:18px 20px}
+  .stage{padding:14px 16px}
+  #stages-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  .stage{margin-bottom:0}
+  .tabs button{font-size:14px;min-height:42px}
+}
 </style>
 </head>
 <body>
