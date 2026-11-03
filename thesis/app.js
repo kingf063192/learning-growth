@@ -2,6 +2,17 @@ import {config} from '../app/config.js';
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function authorName(){
+  try{
+    const s=JSON.parse(localStorage.getItem('thesis-session')||'null');
+    if(s&&s.user){
+      const e=s.user.email||'';
+      return (s.user.user_metadata&&(s.user.user_metadata.name||s.user.user_metadata.full_name))||e.split('@')[0]||'我';
+    }
+  }catch(e){}
+  return '对方';
+}
 const H=()=>({apikey:config.key,'Content-Type':'application/json'});
 let code=new URLSearchParams(location.search).get('code')||localStorage.getItem('thesis-code')||'';
 let data=null, session=JSON.parse(localStorage.getItem('thesis-session')||'null');
@@ -40,15 +51,15 @@ function render(){
     <div class="row-actions"><button id="fTodo" class="${filter==='todo'?'primary':''}">未完成</button><button id="fAll" class="${filter==='all'?'primary':''}">全部</button><button id="refresh">刷新</button><a href="#" id="switch">换分享码</a></div></div>
     <div class="panel"><h2>任务清单</h2>${shown.map(t=>taskHtml(t,cm,files)).join('')||'<p class="meta">没有任务</p>'}</div>
     <div class="panel"><h2>留言板</h2>${cm.filter(c=>!c.task_id).map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有留言</p>'}
-      <div class="form"><input id="gbName" placeholder="你的名字" value="${esc(localStorage.getItem('thesis-name')||'')}"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></div>`;
+      <div class="form"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></div>`;
   $('#fTodo').onclick=()=>{filter='todo';render()};
   $('#fAll').onclick=()=>{filter='all';render()};
   $('#refresh').onclick=load;
   $('#switch').onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');render()};
   $('#gbSend').onclick=async()=>{
-    const name=$('#gbName').value.trim()||'匿名',body=$('#gbBody').value.trim();
-    if(!body)return;localStorage.setItem('thesis-name',name);
-    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:null,p_author:name,p_body:body});$('#gbBody').value='';load()}catch(e){toast(e.message)}
+    const body=$('#gbBody').value.trim();
+    if(!body)return;
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:null,p_author:authorName(),p_body:body});$('#gbBody').value='';load()}catch(e){toast(e.message)}
   };
   bindTask();
 }
@@ -80,7 +91,7 @@ function bindTask(){
   document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
     const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
     if(f.size>20*1024*1024){toast('文件超过 20 MB');return}
-    const name=localStorage.getItem('thesis-name')||'匿名';
+    const name=authorName();
     const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
     try{
       const r=await fetch(config.url+'/storage/v1/object/thesis-files/'+encodeURI(path),{method:'POST',headers:{apikey:config.key,Authorization:'Bearer '+config.key,'Content-Type':f.type||'application/octet-stream'},body:f});
@@ -91,14 +102,13 @@ function bindTask(){
   });
   document.querySelectorAll('[data-send]').forEach(el=>el.onclick=async()=>{
     const id=el.getAttribute('data-send');
-    const name=document.querySelector(`[data-name="${id}"]`).value.trim()||'匿名';
     const body=document.querySelector(`[data-body="${id}"]`).value.trim();
-    if(!body)return;localStorage.setItem('thesis-name',name);
-    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:name,p_body:body});load()}catch(e){toast(e.message)}
+    if(!body)return;
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:authorName(),p_body:body});load()}catch(e){toast(e.message)}
   });
   document.querySelectorAll('[data-up]').forEach(el=>el.onchange=async()=>{
     const id=el.getAttribute('data-up'),f=el.files[0];if(!f)return;if(f.size>20*1024*1024){toast('文件超过 20 MB，请压缩后再传');return;}
-    const name=localStorage.getItem('thesis-name')||'匿名';
+    const name=authorName();
     const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
     try{
       const r=await fetch(config.url+'/storage/v1/object/thesis-files/'+encodeURI(path),{method:'POST',headers:{apikey:config.key,Authorization:'Bearer '+config.key,'Content-Type':f.type||'application/octet-stream'},body:f});
@@ -233,18 +243,18 @@ render = function(){
         <button class="link" data-scmt="${st.id}">评语 (${scm.length})</button>
       </div>
       ${openComments.has(st.id)?`<div class="sub">${scm.map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有评语</p>'}
-        <div class="form"><input data-name="${st.id}" placeholder="你的名字" value="${esc(localStorage.getItem('thesis-name')||'')}"><textarea data-body="${st.id}" placeholder="对这一步的评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div>${(data.files||[]).filter(f=>f.task_id===st.id).map(f=>`<p><a href="${config.url}/storage/v1/object/public/thesis-files/${encodeURI(f.path)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a></p>`).join('')}<label class="upload">上传文件<input type="file" data-sup="${st.id}" hidden></label></div>`:''}
+        <div class="form"><textarea data-body="${st.id}" placeholder="对这一步的评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div>${(data.files||[]).filter(f=>f.task_id===st.id).map(f=>`<p><a href="${config.url}/storage/v1/object/public/thesis-files/${encodeURI(f.path)}" target="_blank" rel="noopener">📎 ${esc(f.name)}</a></p>`).join('')}<label class="upload">上传文件<input type="file" data-sup="${st.id}" hidden></label></div>`:''}
       `}
     </div>`;
   }).join('')}
   <div class="panel"><h2>留言板</h2>${cm.filter(c=>!c.task_id).map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <span class="meta">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span><p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有留言</p>'}
-    <div class="form"><input id="gbName" placeholder="你的名字" value="${esc(localStorage.getItem('thesis-name')||'')}"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></div>`;
+    <div class="form"><textarea id="gbBody" placeholder="给对方的留言…"></textarea><button id="gbSend" class="primary">发送</button></div></div>`;
   $('#refresh').onclick=()=>load();
   $('#switch').onclick=e=>{e.preventDefault();code='';data=null;localStorage.removeItem('thesis-code');render()};
   $('#gbSend').onclick=async()=>{
-    const name=$('#gbName').value.trim()||'匿名',body=$('#gbBody').value.trim();
-    if(!body)return;localStorage.setItem('thesis-name',name);
-    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:null,p_author:name,p_body:body});$('#gbBody').value='';load()}catch(e){toast(e.message)}
+    const body=$('#gbBody').value.trim();
+    if(!body)return;
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:null,p_author:authorName(),p_body:body});$('#gbBody').value='';load()}catch(e){toast(e.message)}
   };
   document.querySelectorAll('[data-st]').forEach(el=>el.onchange=async()=>{
     const sid=el.dataset.st, j=el.dataset.j;
@@ -276,7 +286,7 @@ render = function(){
   document.querySelectorAll('[data-sup]').forEach(el=>el.onchange=async()=>{
     const id=el.getAttribute('data-sup'),f=el.files[0];if(!f)return;
     if(f.size>20*1024*1024){toast('文件超过 20 MB');return}
-    const name=localStorage.getItem('thesis-name')||'匿名';
+    const name=authorName();
     const path=code+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-\u4e00-\u9fa5]/g,'_');
     try{
       const r=await fetch(config.url+'/storage/v1/object/thesis-files/'+encodeURI(path),{method:'POST',headers:{apikey:config.key,Authorization:'Bearer '+config.key,'Content-Type':f.type||'application/octet-stream'},body:f});
@@ -287,10 +297,9 @@ render = function(){
   });
   document.querySelectorAll('[data-send]').forEach(el=>el.onclick=async()=>{
     const id=el.getAttribute('data-send');
-    const name=document.querySelector(`[data-name="${id}"]`).value.trim()||'匿名';
     const body=document.querySelector(`[data-body="${id}"]`).value.trim();
-    if(!body)return;localStorage.setItem('thesis-name',name);
-    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:name,p_body:body});load()}catch(e){toast(e.message)}
+    if(!body)return;
+    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:authorName(),p_body:body});load()}catch(e){toast(e.message)}
   });
 };
 load();
