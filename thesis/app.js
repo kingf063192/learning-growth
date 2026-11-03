@@ -178,9 +178,13 @@ async function loadCodes(){
     const link=location.origin+location.pathname+'?code='+encodeURIComponent(s.code);
     return `<div class="codebox"><b>${esc(s.code)}</b> ${s.revoked?'<span class="tag">已停用</span>':''}<p class="meta">${esc(s.advisor||'未命名导师')} · 创建 ${esc((s.created_at||'').slice(0,10))}</p>
       <p class="meta">导师链接：<a href="${link}">${esc(link)}</a></p>
-      <button data-copy="${esc(link)}">复制链接</button>${s.revoked?'':`<button data-revoke="${esc(s.id)}">停用</button>`}</div>`;
+      <button data-copy="${esc(link)}">复制链接</button>${s.revoked?'':`<button data-revoke="${esc(s.id)}">停用</button>`}<button class="danger" data-delcode="${esc(s.id)}">删除</button></div>`;
   }).join('')||'<p class="meta">还没有分享码</p>';
   document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(b.getAttribute('data-copy'));toast('链接已复制')});
+  document.querySelectorAll('[data-delcode]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('彻底删除这个分享码？它下面的阶段、评语、文件和上传的文档都会一起删掉，无法恢复。'))return;
+    try{await rpc('thesis_share_delete',{p_id:b.getAttribute('data-delcode')});toast('已删除');loadCodes()}catch(e){toast(e.message)}
+  });
   document.querySelectorAll('[data-revoke]').forEach(b=>b.onclick=async()=>{
     const r=await fetch(config.url+'/rest/v1/thesis_share?id=eq.'+b.getAttribute('data-revoke'),{method:'PATCH',headers:{...H(),Authorization:'Bearer '+session.access_token},body:JSON.stringify({revoked:true})});
     if(r.ok){toast('已停用');loadCodes()}else toast('操作失败');
