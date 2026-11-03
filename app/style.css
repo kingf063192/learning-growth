@@ -128,3 +128,7 @@ button.big{width:100%;min-height:52px;font-size:16.5px;border-radius:12px}
 .tt-ev b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tt-ev span{font-size:10px;opacity:.8}
 .tt-ev.locked{cursor:default;border-style:solid;border-width:1.5px}
+
+.cc-ops{display:flex;gap:6px;margin-top:8px}
+.cc-ops button{min-height:30px;padding:2px 10px;font-size:12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--muted)}
+.cc-ops button.del{color:#b4453f;border-color:#f0c4c4;margin-left:auto}
