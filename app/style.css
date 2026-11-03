@@ -110,3 +110,5 @@ button.big{width:100%;min-height:52px;font-size:16.5px;border-radius:12px}
 .wg2-ev span{font-size:10px;opacity:.85}
 .wg2-ev.locked{cursor:default;border-style:dashed}
 .wg2-ev.dragging{opacity:.4}
+
+.sec{font-size:13px;color:var(--muted);margin:12px 0 4px}
