@@ -587,3 +587,63 @@ renderToday = function(){
   </div>`;
 };
 ensureDailyStudy();
+
+/* ===== 每日：把任务细分并排进空档 ===== */
+let scheduleToday;
+const DEF_SLOTS={早:['08:30','10:10'],上午:['10:25','12:05'],下午:['14:00','17:35'],傍晚:['18:30','19:30'],晚上:['19:30','22:00'],睡前:['22:00','22:30']};
+function m2(h){if(!h)return null;const a=h.split(':');return (+a[0])*60+(+a[1])}
+function h2(m){const h=Math.floor(m/60),x=m%60;return String(h).padStart(2,'0')+':'+String(x).padStart(2,'0')}
+
+function busyToday(){
+  const out=[];
+  tasks().filter(t=>t.date===today()&&t.start).forEach(t=>{const a=m2(t.start),b=m2(t.end||t.start);if(a!=null&&b!=null&&b>a)out.push([a,b])});
+  const wd=new Date().getDay(), slots=settings().slots||DEF_SLOTS;
+  store.all('fixed').filter(f=>f.wd===wd).forEach(f=>{
+    const s=slots[f.slot]||DEF_SLOTS[f.slot];
+    if(s){const a=m2(s[0]),b=m2(s[1]);if(a!=null&&b!=null)out.push([a,b])}
+  });
+  return out.sort((a,b)=>a[0]-b[0]);
+}
+function freeWindows(){
+  const busy=busyToday();
+  const windows=[[8*60,12*60],[13*60,17*60+40],[19*60,22*60]];
+  const out=[];
+  for(const [ws,we] of windows){
+    let cur=ws;
+    const blocks=busy.filter(b=>b[1]>ws&&b[0]<we).sort((a,b)=>a[0]-b[0]);
+    for(const b of blocks){if(b[0]>cur)out.push([cur,Math.min(b[0],we)]);cur=Math.max(cur,b[1]);if(cur>=we)break}
+    if(cur<we)out.push([cur,we]);
+  }
+  return out.filter(w=>w[1]-w[0]>=15).map(w=>[...w]);
+}
+function takeSlot(free,dur,gap){
+  for(let i=0;i<free.length;i++){
+    const w=free[i];
+    if(w[1]-w[0]>=dur){const start=w[0];w[0]=start+dur+gap;return start}
+  }
+  return null;
+}
+
+scheduleToday = async function(){
+  const list=tasks().filter(t=>t.date===today()&&t.category!=='固定课程'&&!t.start&&!t.done);
+  if(!list.length)return;
+  const free=freeWindows();
+  if(!free.length)return;
+  const order=list.sort((a,b)=>(Number(b.weight)||Number(chapter(b)?.weight)||1)-(Number(a.weight)||Number(chapter(a)?.weight)||1));
+  for(const t of order){
+    let dur=Number(t.duration)||30;
+    if(dur>35){
+      const parts=dur>60?3:2, per=Math.max(15,Math.round(dur/parts/5)*5), baseTitle=String(t.title).replace(/（\d+\/\d+）$/,'');
+      await store.put({...t,title:baseTitle+'（1/'+parts+'）',duration:per});
+      for(let k=1;k<parts;k++){
+        await store.put({id:t.id+'-p'+k,kind:'task',courseId:t.courseId,chapterId:t.chapterId,title:baseTitle+'（'+(k+1)+'/'+parts+'）',category:t.category,duration:per,order:t.order,date:today(),done:false,note:t.note});
+      }
+      dur=per;
+    }
+    const start=takeSlot(free,dur,10);
+    if(start==null)break;
+    await store.put({...t,start:h2(start),end:h2(start+dur),duration:dur});
+  }
+  render();try{await cloud.sync()}catch(e){}
+};
+(async()=>{try{await ensureDailyStudy()}catch(e){};try{await scheduleToday()}catch(e){}})();
