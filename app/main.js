@@ -721,7 +721,13 @@ const CAT_COLORS={
 const EXAM_IDS=['g-eng','g-biochem','g-cell','g-politics'];
 function colorOf(t){
   if(t.courseId==='g-thesis')return CAT_COLORS.thesis;
-  if(t.fixedLike||t.category==='固定课程')return CAT_COLORS.class;
+  if(t.fixedLike){
+    if(t.category==='兴趣')return CAT_COLORS.interest;
+    if(t.category==='生活')return CAT_COLORS.life;
+    if(t.category==='科研')return CAT_COLORS.thesis;
+    return CAT_COLORS.class;
+  }
+  if(t.category==='固定课程')return CAT_COLORS.class;
   if(t.category==='生活')return CAT_COLORS.life;
   if(t.category==='兴趣')return CAT_COLORS.interest;
   if(EXAM_IDS.includes(t.courseId))return CAT_COLORS.exam;
@@ -754,7 +760,7 @@ renderWeek = function(){
         const hgt=Math.max(26,((m2(t.end||t.start)||(h*60+30))-(m2(t.start)||h*60))*0.8);
         return `<button class="wg-ev ${lock?'locked':''}" data-tid="${esc(t.id)}" data-lock="${lock?1:0}"
           ${lock?'':'draggable="true"'} style="background:${c.bg};border-color:${c.bd};color:${c.tx};height:${hgt}px">
-          ${lock?'🔒 ':''}<b>${esc(t.title)}</b><span>${esc(t.start||'')}</span></button>`;
+          <b>${esc(t.title)}</b><span>${esc(t.start||'')}</span></button>`;
       }).join('')}</div>`;
     }).join('')}`).join('')}
   </div></div></div>`;
@@ -828,7 +834,7 @@ renderWeek = function(){
   const todayStr=today();
   const hours=Array.from({length:15},(_,i)=>i+7);
   return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}<b style="margin-left:auto">${week} — ${addDays(week,6)}</b></div>
-  <p class="meta">蓝=上课 <span class="dotc" style="background:#5b8def"></span> 紫=论文 <span class="dotc" style="background:#8b6cd9"></span> 绿=考研 <span class="dotc" style="background:#2fa36b"></span> 橙=兴趣 <span class="dotc" style="background:#d97a3a"></span> 灰=生活 <span class="dotc" style="background:#9aa0a6"></span>；🔒 不能拖，其余可拖</p>
+  <p class="meta">蓝=上课 <span class="dotc" style="background:#5b8def"></span> 紫=论文 <span class="dotc" style="background:#8b6cd9"></span> 绿=考研 <span class="dotc" style="background:#2fa36b"></span> 橙=兴趣 <span class="dotc" style="background:#d97a3a"></span> 灰=生活 <span class="dotc" style="background:#9aa0a6"></span>；不能拖，其余可拖</p>
   <div class="week-scroll">
     <div class="wg2-head"><div class="wg2-corner"></div>${dates.map((d,i)=>`<div class="wg2-hd ${d===todayStr?'today':''}">${['一','二','三','四','五','六','日'][i]}<br><span>${d.slice(5)}</span></div>`).join('')}</div>
     <div class="wg2-body">
@@ -848,7 +854,7 @@ renderWeek = function(){
             const c=colorOf(t);
             return `<button class="wg2-ev ${t.lock?'locked':''}" data-tid="${esc(t.id)}" data-lock="${t.lock?1:0}" ${t.lock?'':'draggable="true"'}
               style="top:${top}px;height:${hgt}px;background:${c.bg};border-color:${c.bd};color:${c.tx}">
-              <b>${t.lock?'🔒 ':''}${esc(t.title)}</b><span>${esc(t.start||'')}${t.end?'–'+esc(t.end):''}</span>
+              <b>${esc(t.title)}</b><span>${esc(t.start||'')}${t.end?'–'+esc(t.end):''}</span>
             </button>`;
           }).join('')}
         </div>`;
@@ -941,11 +947,11 @@ renderWeek = function(){
       const c=colorOf(t);
       return `<button class="tt-ev ${t.lock?'locked':''}" data-tid="${esc(t.id)}" data-lock="${t.lock?1:0}" ${t.lock?'':'draggable="true"'}
         style="background:${c.bg};border-color:${c.bd};color:${c.tx}">
-        <b>${t.lock?'🔒 ':''}${esc(t.title)}</b><span>${esc(t.start||'')}</span></button>`;
+        <b>${esc(t.title)}</b><span>${esc(t.start||'')}</span></button>`;
     }).join('')}</td>`;
   };
   return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}<b style="margin-left:auto">${week} — ${addDays(week,6)}</b></div>
-  <p class="meta">🔒 固定课程/日程不能拖；其他块可以拖到别的格子改时间。</p>
+  <p class="meta">固定课程/日程不能拖；其他块可以拖到别的格子改时间。</p>
   <div class="tt-scroll"><table class="tt">
     <thead><tr><th class="tt-th">时段</th>${dates.map((d,i)=>`<th class="${d===todayStr?'today':''}">${['周一','周二','周三','周四','周五','周六','周日'][i]}<br><span>${d.slice(5)}</span></th>`).join('')}</tr></thead>
     <tbody>${TT_SLOTS.map(sl=>`<tr><th class="tt-th">${sl}<br><span>${map[sl]?map[sl][0]+'–'+map[sl][1]:''}</span></th>${dates.map(d=>cell(d,sl)).join('')}</tr>`).join('')}</tbody>
