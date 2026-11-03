@@ -204,12 +204,13 @@ function renderWeek(){
       FIXED.filter(f=>f[0]===((new Date(d+'T12:00').getDay()+6)%7)&&f[1]===sl).forEach(f=>{const n=f[2];const cat=/射箭|架子鼓|绘画|拼豆/.test(n)?'兴趣':(/FF14/.test(n)?'游戏':(/服药|陪聊|复诊/.test(n)?'生活':'课程'));items.push({title:n,cat:cat,lock:true});});
       S.tasks.filter(x=>x.date===d&&!x.hw).forEach(x=>{
         if(sl==='晚上'&&x.course==='thesis')items.push({title:x.title,cat:'论文',lock:false});
-        else if(x.start===s||(!x.start&&sl==='下午'&&wd===6))items.push({title:x.title,cat:catOf(x.course),lock:false});
+        else if(x.start===s||(!x.start&&sl==='下午'&&wd===6))items.push({title:x.title,cat:catOf(x.course),lock:false,id:x.id});
       });
       const wkd=(new Date(d+'T12:00').getDay()+6)%7;
       if(wkd===0&&sl==='晚上')items.push({title:'FF14 固定队',cat:'游戏',lock:true});
       if(wkd===5&&sl==='下午')items.push({title:'架子鼓课',cat:'兴趣',lock:true});
-      html+='<td>'+items.map(it=>{const c=CAT[it.cat]||CAT['专业'];return `<span class="ev" style="background:${c.bg};border-color:${c.bd};color:${c.tx};border-style:${it.lock?'solid':'dashed'}">${it.title}</span>`}).join('')+'</td>';
+      html+='<td class="cell" data-date="'+d+'" data-slot="'+sl+'">'+items.map(it=>{const c=CAT[it.cat]||CAT['专业'];
+        return `<span class="ev ${it.lock?'lock':''}" ${it.id?'draggable="true" data-id="'+it.id+'"':''} style="background:${c.bg};border-color:${c.bd};color:${c.tx};border-style:${it.lock?'solid':'dashed'}">${it.title}</span>`}).join('')+'</td>';
     }
     html+='</tr>';
   }
@@ -243,5 +244,24 @@ document.getElementById('expBtn').onclick=()=>{const b=new Blob([JSON.stringify(
 document.getElementById('impBtn').onclick=()=>document.getElementById('impFile').click();
 document.getElementById('impFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{S=JSON.parse(r.result);save();render()}catch(err){alert('格式不对')}};r.readAsText(f)};
 document.getElementById('rstBtn').onclick=()=>{if(confirm('清空本机数据？')){S=def();save();render()}};
+
+/* 拖动：把任务拖到别的格子改日期/时段 */
+let dragId=null;
+document.addEventListener('dragstart',e=>{
+  const el=e.target.closest('.ev[data-id]');if(!el)return;
+  dragId=el.dataset.id;e.dataTransfer.setData('text/plain',dragId);
+});
+document.addEventListener('dragover',e=>{
+  const cell=e.target.closest('.cell');if(cell&&dragId){e.preventDefault();cell.style.outline='2px dashed #2f6fb3'}
+});
+document.addEventListener('dragleave',e=>{const cell=e.target.closest('.cell');if(cell)cell.style.outline=''});
+document.addEventListener('drop',e=>{
+  const cell=e.target.closest('.cell');if(!cell||!dragId)return;
+  e.preventDefault();cell.style.outline='';
+  const t=S.tasks.find(x=>x.id===dragId);if(!t)return;
+  t.date=cell.dataset.date;t.start=(SLOTS.find(s=>s[0]===cell.dataset.slot)||[])[1]||'';
+  dragId=null;save();render();toast('已移动');
+});
+
 ensureHW();render();
 </script></body></html>
