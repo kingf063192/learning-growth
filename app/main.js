@@ -763,7 +763,7 @@ renderWeek = function(){
 /* 拖动：桌面用 HTML5 DnD，iPad 用指针长按拖动 */
 let dragId=null,dragLock=false,ghost=null;
 document.addEventListener('dragstart',e=>{
-  const el=e.target.closest&&e.target.closest('.wg2-ev'); if(!el||el.dataset.lock==='1')return;
+  const el=e.target.closest&&e.target.closest('.tt-ev'); if(!el||el.dataset.lock==='1')return;
   dragId=el.dataset.tid; dragLock=false; e.dataTransfer.setData('text/plain',dragId);
 },true);
 document.addEventListener('dragover',e=>{
@@ -775,18 +775,18 @@ document.addEventListener('dragleave',e=>{
 document.addEventListener('drop',async e=>{
   const cell=e.target.closest&&e.target.closest('[data-cell]'); if(!cell||!dragId)return;
   e.preventDefault();cell.classList.remove('dragover');
-  const [d,h]=cell.dataset.cell.split(':');
+  const [d,sl]=cell.dataset.cell.split(':');
   const t=store.get(dragId);
   if(t){
-    const dur=Number(t.duration)||30, st=(+h)*60;
-    await store.put({...t,date:d,start:h2(st),end:h2(st+dur),locked:false});
+    const sp=slotTimes()[sl]||['09:00','09:30'];
+    await store.put({...t,date:d,slot:sl,start:sp[0],end:sp[1],locked:false});
     dragId=null;render();try{await cloud.sync()}catch(err){}
   }
 },true);
 
 let pressTimer=null,pressing=null,ghostEl=null;
 document.addEventListener('pointerdown',e=>{
-  const el=e.target.closest&&e.target.closest('.wg2-ev');
+  const el=e.target.closest&&e.target.closest('.tt-ev');
   if(!el||el.dataset.lock==='1')return;
   pressing={id:el.dataset.tid,x:e.clientX,y:e.clientY,moved:false};
   pressTimer=setTimeout(()=>{
@@ -809,10 +809,10 @@ document.addEventListener('pointerup',async e=>{
   if(dragId){
     const cell=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-cell]');
     if(cell){
-      const [d,h]=cell.dataset.cell.split(':');
+      const [d,sl]=cell.dataset.cell.split(':');
       const t=store.get(dragId);
-      if(t){const dur=Number(t.duration)||30, st=(+h)*60;
-        await store.put({...t,date:d,start:h2(st),end:h2(st+dur),locked:false});
+      if(t){const sp=slotTimes()[sl]||['09:00','09:30'];
+        await store.put({...t,date:d,slot:sl,start:sp[0],end:sp[1],locked:false});
         try{await cloud.sync()}catch(err){}
       }
     }
@@ -858,8 +858,8 @@ renderWeek = function(){
 };
 
 /* ===== 今日：6 个学习任务 + 作业区；只给专业课/考研排学习 ===== */
-const STUDY_OK=['g-eng','g-biochem','g-cell','g-politics','g-inorg','g-org','g-cook','g-food'];
-const HOMEWORK_IDS=['g-report','g-online'];
+const STUDY_OK=['g-eng','g-biochem','g-cell','g-politics','g-inorg','g-org','g-cook','g-food','g-report','g-dou','g-draw','g-drum'];
+const HOMEWORK_IDS=['g-online'];
 function isHomework(t){
   if(HOMEWORK_IDS.includes(t.courseId))return true;
   return /作业|报告|实训|网课|实验报告/.test(t.title||'');
@@ -912,4 +912,42 @@ renderToday = function(){
       <div class="body"><button class="title" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button>
       <div class="meta"><span class="tag" style="background:${c.bg};color:${c.tx};border:1px solid ${c.bd}">${esc((course(t)||{}).title||t.category||'任务')}</span>${t.date?esc(t.date):'未排日期'}</div></div></div>`}).join('')}
     <p class="meta">作业不进每日计划，做完勾掉就行。</p></div>`:''}`;
+};
+
+/* ===== 行程：时段表格（早/上午/下午/傍晚/晚上/睡前 × 7 天），可拖动 ===== */
+const TT_SLOTS=['早','上午','下午','傍晚','晚上','睡前'];
+function slotTimes(){return Object.assign({},DEF_SLOTS,settings().slots||{})}
+function slotOf(t){
+  if(t.slot&&TT_SLOTS.includes(t.slot))return t.slot;
+  const st=m2(t.start);
+  if(st==null)return '上午';
+  const map=slotTimes();
+  for(const sl of TT_SLOTS){const r=map[sl];if(!r)continue;const a=m2(r[0]),b=m2(r[1]);if(st>=a-30&&st<b)return sl}
+  return st<10*60?'早':st<12*60?'上午':st<17*60?'下午':st<19.5*60?'傍晚':st<22*60?'晚上':'睡前';
+}
+renderWeek = function(){
+  const dates=Array.from({length:7},(_,i)=>addDays(week,i));
+  const todayStr=today(), map=slotTimes();
+  const cell=(d,sl)=>{
+    const evs=[];
+    fixedForDay(d).forEach(f=>{if(slotOf(f)===sl)evs.push({...f,lock:true})});
+    tasks().filter(t=>t.date===d).forEach(t=>{
+      if(slotOf(t)!==sl)return;
+      if(evs.some(f=>f.title===t.title&&f.start===t.start))return;
+      evs.push({...t,lock:false});
+    });
+    evs.sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+    return `<td class="tt-cell ${d===todayStr?'today':''}" data-cell="${d}:${sl}">${evs.map(t=>{
+      const c=colorOf(t);
+      return `<button class="tt-ev ${t.lock?'locked':''}" data-tid="${esc(t.id)}" data-lock="${t.lock?1:0}" ${t.lock?'':'draggable="true"'}
+        style="background:${c.bg};border-color:${c.bd};color:${c.tx}">
+        <b>${t.lock?'🔒 ':''}${esc(t.title)}</b><span>${esc(t.start||'')}</span></button>`;
+    }).join('')}</td>`;
+  };
+  return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}<b style="margin-left:auto">${week} — ${addDays(week,6)}</b></div>
+  <p class="meta">🔒 固定课程/日程不能拖；其他块可以拖到别的格子改时间。</p>
+  <div class="tt-scroll"><table class="tt">
+    <thead><tr><th class="tt-th">时段</th>${dates.map((d,i)=>`<th class="${d===todayStr?'today':''}">${['周一','周二','周三','周四','周五','周六','周日'][i]}<br><span>${d.slice(5)}</span></th>`).join('')}</tr></thead>
+    <tbody>${TT_SLOTS.map(sl=>`<tr><th class="tt-th">${sl}<br><span>${map[sl]?map[sl][0]+'–'+map[sl][1]:''}</span></th>${dates.map(d=>cell(d,sl)).join('')}</tr>`).join('')}</tbody>
+  </table></div></div>`;
 };
