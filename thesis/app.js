@@ -13,6 +13,7 @@ function authorName(){
   }catch(e){}
   return '对方';
 }
+function roleName(){try{const s=JSON.parse(localStorage.getItem('thesis-session')||'null');return s&&s.user?'我':'导师'}catch(e){return '对方'}}
 const H=()=>({apikey:config.key,'Content-Type':'application/json'});
 let code=new URLSearchParams(location.search).get('code')||localStorage.getItem('thesis-code')||'';
 let data=null, session=JSON.parse(localStorage.getItem('thesis-session')||'null');
@@ -234,6 +235,7 @@ render = function(){
         const edited=!!(c&&c.text&&c.text!==it);
         return `<li class="cli"><label><input type="checkbox" data-st="${st.id}" data-j="${j}" ${done?'checked':''}> ${edited?`<s class="orig">${esc(it)}</s> <span class="newtxt">${esc(c.text)}</span>`:`<span>${esc(it)}</span>`}</label>${edited?'<span class="edtag">已改</span>':''}<button class="mini" data-ed="${st.id}:${j}">修改/批注</button>
           ${note?`<div class="note">📝 ${esc(note)}</div>`:''}
+          ${(c&&c.history&&c.history.length)?`<div class="hist">${c.history.map(h=>`<div>${esc(h.by)} ${esc((h.at||'').slice(5,10))} 把「${esc(h.from)}」改成「${esc(h.to)}」</div>`).join('')}</div>`:''}
           ${ed?`<div class="editbox"><p class="meta" style="margin:0">原文：${esc(it)}</p><input data-et="${st.id}:${j}" value="${esc((c&&c.text)||'')}" placeholder="填写修改后的内容（留空则保留原文）"><textarea data-en="${st.id}:${j}" placeholder="批注：为什么改/有什么疑问">${esc(note)}</textarea><button class="primary" data-es="${st.id}:${j}">保存</button><button class="link" data-ec="${st.id}:${j}">取消</button></div>`:''}
         </li>`;
       }).join('')}</ul>
@@ -272,6 +274,13 @@ render = function(){
     const note=document.querySelector(`[data-en="${k}"]`).value.trim();
     const cur2={...(checksOf(stageMap(),sid))};
     const old=cur2[j];const obj=typeof old==='object'&&old?{...old}:{done:!!old};
+    const st=STAGES.find(x=>x.id===sid);
+    const origText=st?st.items[+j]:'';
+    const oldText=(obj.text||'').trim()||origText;
+    const newText=txt||origText;
+    if(newText!==oldText){
+      obj.history=(obj.history||[]).concat([{by:roleName(),at:new Date().toISOString(),from:oldText,to:newText}]).slice(-10);
+    }
     obj.text=txt;obj.note=note;cur2[j]=obj;
     try{await stageSet(sid,cur2,null,null);openEdits.delete(k);toast('已保存')}catch(e){toast(e.message)}
   });
