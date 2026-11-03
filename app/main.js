@@ -251,3 +251,71 @@ splitTask = async function(key){
   try{await cloud.sync()}catch(e){}
   toast('已拆成 '+parts+' 步，每天一步；每一步只要 '+per+' 分钟，点开能看到具体怎么做。');
 };
+
+/* ===== 按重要度加权进度 ===== */
+const origCourses = renderCourses;
+progress = function(list){
+  let tot=0,dn=0;
+  for(const t of list){
+    const ch=chapter(t);
+    const w=Number(t.weight)||Number(ch&&ch.weight)||1;
+    tot+=w; if(t.done)dn+=w;
+  }
+  return tot?Math.round(dn/tot*100):0;
+};
+
+function weightPanel(){
+  const cs=store.all('course');
+  return `<details class="panel"><summary>重要度设置（按考试分值加权）</summary>
+  <p class="meta">给每章打星：5 星=必考重点，1 星=了解。进度条会按星数加权，重点章节完成得多，进度涨得快。</p>
+  ${cs.map(c=>{
+    const chs=store.all('chapter').filter(x=>x.courseId===c.id).sort((a,b)=>a.order-b.order);
+    if(!chs.length)return '';
+    return `<div class="wgroup"><h3>${esc(c.title)}</h3>${chs.map(ch=>{
+      const w=Number(ch.weight)||1;
+      return `<div class="wrow"><span class="wt">${esc(ch.title)}</span><span class="stars">${[1,2,3,4,5].map(n=>`<button data-weight="${esc(ch.id)}:${n}" class="${w>=n?'on':''}">★</button>`).join('')}</span></div>`;
+    }).join('')}</div>`;
+  }).join('')}
+  <h3>用 AI 批量设置</h3>
+  <p class="meta">让 AI 按考试大纲/真题频次给每章打星，返回 JSON 后粘到这里导入。</p>
+  <textarea id="wjson" placeholder='&#123;"type":"chapter-weights","items":[&#123;"chapterId":"g-eng-ch-0","weight":5&#125;]&#125;'></textarea>
+  <div class="toolbar"><button class="primary" id="wImport">导入重要度</button><button id="wCopy">复制章节目录</button></div>
+  </details>`;
+}
+
+renderCourses = function(){
+  return origCourses() + weightPanel();
+};
+
+document.addEventListener('click',async e=>{
+  const b=e.target.closest&&e.target.closest('[data-weight]');
+  if(b){
+    e.preventDefault();e.stopImmediatePropagation();
+    const [cid,n]=b.getAttribute('data-weight').split(':');
+    const ch=store.get(cid);
+    if(!ch)return;
+    const w=Number(n);
+    await store.put({...ch,weight:Number(ch.weight)===w?1:w});
+    render();try{await cloud.sync()}catch(err){}
+    return;
+  }
+  if(e.target.id==='wCopy'){
+    const txt=store.all('chapter').map(c=>c.id+' | '+c.title).join('\n');
+    navigator.clipboard?.writeText(txt);toast('章节目录已复制，粘给 AI 打星');return;
+  }
+  if(e.target.id==='wImport'){
+    try{
+      const o=JSON.parse(document.getElementById('wjson').value);
+      const items=(o.items||o.chapters||[]).filter(x=>x&&x.chapterId);
+      let n=0;
+      for(const it of items){
+        const ch=store.get(it.chapterId);
+        if(!ch)continue;
+        await store.put({...ch,weight:Math.min(5,Math.max(1,Number(it.weight)||1))});
+        n++;
+      }
+      render();try{await cloud.sync()}catch(err){}
+      toast('已导入 '+n+' 章的重要度');
+    }catch(err){toast('JSON 格式不对：'+err.message)}
+  }
+},true);
