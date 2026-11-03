@@ -856,3 +856,60 @@ renderWeek = function(){
     </div>
   </div></div>`;
 };
+
+/* ===== 今日：6 个学习任务 + 作业区；只给专业课/考研排学习 ===== */
+const STUDY_OK=['g-eng','g-biochem','g-cell','g-politics','g-inorg','g-org','g-cook','g-food'];
+const HOMEWORK_IDS=['g-report','g-online'];
+function isHomework(t){
+  if(HOMEWORK_IDS.includes(t.courseId))return true;
+  return /作业|报告|实训|网课|实验报告/.test(t.title||'');
+}
+ensureDailyStudy = async function(){
+  const todays=tasks().filter(t=>t.date===today()&&t.category!=='固定课程'&&t.courseId!=='g-thesis');
+  const want=6;
+  if(todays.length>=want)return;
+  const cands=tasks().filter(t=>t.category!=='固定课程'&&t.courseId!=='g-thesis'&&!t.done&&(!t.date||t.date>today())&&!isHomework(t)&&STUDY_OK.includes(t.courseId));
+  const wOf=t=>Number(t.weight)||Number(chapter(t)?.weight)||1;
+  cands.sort((a,b)=>wOf(b)-wOf(a)||((a.order||0)-(b.order||0)));
+  const add=cands.slice(0,want-todays.length);
+  for(const t of add)await store.put({...t,date:today(),start:'',end:''});
+  if(add.length){render();try{await cloud.sync()}catch(e){}}
+};
+
+renderToday = function(){
+  const isStudy=t=>t.category!=='固定课程'&&t.courseId!=='g-thesis';
+  const list=tasks().filter(t=>t.date===today()&&isStudy(t)&&!isHomework(t));
+  const dn=list.filter(t=>t.done).length;
+  const award=store.all('award').filter(x=>x.date===today()).reduce((n,x)=>n+x.amount,0);
+  const timed=list.filter(t=>t.start).sort((a,b)=>a.start.localeCompare(b.start));
+  const untimed=list.filter(t=>!t.start);
+  const next=list.filter(t=>!t.done).sort((a,b)=>(a.start||'99').localeCompare(b.start||'99'))[0];
+  const allDone=dn===list.length&&list.length>0;
+  const thesis=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const thesisNow=tasks().filter(t=>t.courseId==='g-thesis'&&!t.done&&t.date&&t.date<=today())[0]||thesis[0];
+  const hw=tasks().filter(t=>!t.done&&isHomework(t)&&(!t.date||t.date<=addDays(today(),7))).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,8);
+  const rowC=t=>{
+    const c=colorOf(t);
+    return `<div class="row ${t.done?'done':''}"><input type="checkbox" data-task="${esc(t.id)}" ${t.done?'checked':''}>
+      <div class="body"><button class="title" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button>
+      <div class="meta"><span class="tag" style="background:${c.bg};color:${c.tx};border:1px solid ${c.bd}">${esc((course(t)||{}).title||t.category||'任务')}</span>${t.start?esc(t.start+'–'+t.end):'今天随时'}</div></div>
+      <button class="mini-btn" data-focus="${esc(t.id)}">2 分钟</button><button class="x-btn" data-split="${esc(t.id)}">×</button></div>`;
+  };
+  return `${thesis.length?`<div class="panel thesis-now"><span class="tag" style="background:#f1ebff;color:#5b3fa8">论文 · 按周固定</span>
+    <h2 class="now-title" style="font-size:17px">${esc(thesisNow?thesisNow.title:'本周论文已完成')}</h2>
+    ${thesisNow?`<button class="primary" style="background:#8b6cd9;border-color:#8b6cd9" data-focus="${esc(thesisNow.id)}">现在做</button>`:''}</div>`:''}
+  <div class="panel focus-now"><p class="meta">现在做</p>
+    <h2 class="now-title">${allDone?'今天做完了，去休息 🎉':(next?esc(next.title):'今天没有学习任务')}</h2>
+    ${next?`<button class="primary big" data-focus="${esc(next.id)}">开始 2 分钟</button>`:''}
+    <p class="today-line">${allDone?'':'已完成 '+dn+' / '+list.length} · 今日 +${award} 分 · 连续 ${streakDays()} 天</p></div>
+  <div class="panel"><div class="toolbar"><h2>今天要做</h2>${action('＋ 任务','newTask')}</div>
+    ${timed.map(rowC).join('')}
+    ${untimed.length?'<h3 class="sec">今天的计划（随时做）</h3>'+untimed.map(rowC).join(''):''}
+    ${!list.length?empty('今天没有学习任务'):''}
+    <p class="meta" style="margin-top:8px">只安排专业课和考研；其他课只在“作业”里出现。</p></div>
+  ${hw.length?`<div class="panel"><h2>作业 / 杂事</h2>
+    ${hw.map(t=>{const c=colorOf(t);return `<div class="row"><input type="checkbox" data-task="${esc(t.id)}">
+      <div class="body"><button class="title" data-action="detail" data-id="${esc(t.id)}">${esc(t.title)}</button>
+      <div class="meta"><span class="tag" style="background:${c.bg};color:${c.tx};border:1px solid ${c.bd}">${esc((course(t)||{}).title||t.category||'任务')}</span>${t.date?esc(t.date):'未排日期'}</div></div></div>`}).join('')}
+    <p class="meta">作业不进每日计划，做完勾掉就行。</p></div>`:''}`;
+};
