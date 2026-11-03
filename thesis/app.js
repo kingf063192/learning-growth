@@ -164,7 +164,7 @@ function stageCard(st,i,sm,ds){
       <button class="${s.advisor_ok?'primary':''}" data-ok="${st.id}:advisor">${s.advisor_ok?'✓ ':''}导师确认</button>
       <button class="link" data-cmt="${st.id}">评语</button></div>
     ${openComments.has(st.id)?`<div class="sub">${((data.comments)||[]).filter(c=>c.task_id===st.id).map(c=>`<div class="cmt"><b>${esc(c.author)}</b> <p>${esc(c.body)}</p></div>`).join('')||'<p class="meta">还没有评语</p>'}
-      <div class="form"><textarea data-body="${st.id}" placeholder="评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div>
+      <div class="form"><select data-kind="${st.id}" style="width:120px"><option>建议</option><option>必须改</option><option>疑问</option></select><textarea data-body="${st.id}" placeholder="评语…"></textarea><button class="primary" data-send="${st.id}">发送</button></div>
       <label class="upload">上传文件<input type="file" data-up="${st.id}" hidden></label></div>`:''}`}</div>`;
 }
 function bindStage(student,sm,ds){
@@ -208,7 +208,7 @@ function bindStage(student,sm,ds){
   document.querySelectorAll('[data-cmt]').forEach(b=>b.onclick=()=>{const id=b.getAttribute('data-cmt');openComments.has(id)?openComments.delete(id):openComments.add(id);render()});
   document.querySelectorAll('[data-send]').forEach(b=>b.onclick=async()=>{
     const id=b.getAttribute('data-send');const v=document.querySelector(`[data-body="${id}"]`).value.trim();if(!v)return;
-    try{await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:author(),p_body:v});await reload()}catch(e){toast(e.message)}
+    try{const kind=(document.querySelector('[data-kind="'+id+'"]')||{}).value||'建议';await rpc('thesis_comment_add',{p_code:code,p_task_id:id,p_author:author(),p_body:'【'+kind+'】'+v});await reload()}catch(e){toast(e.message)}
   });
   document.querySelectorAll('[data-up]').forEach(el=>{if(el.tagName==='INPUT'&&el.type==='file')el.onchange=async()=>{
     const id=el.getAttribute('data-up'),f=el.files[0];if(!f)return;if(f.size>10*1024*1024){toast('超过 10MB');return}
@@ -232,3 +232,59 @@ function addStage(){
   if(urlCode){code=urlCode;await openCode(urlCode);return}
   render();
 })();
+
+/* ===== 文献库 / 实验记录 / 导出报告 ===== */
+function auxOf(){return (data&&data.auxx)||{}}
+function refsOf(){return (auxOf().refs)||[]}
+function logsOf(){return (auxOf().logs)||[]}
+async function saveAux(refs,logs){await rpc('thesis_aux_save',{p_code:code,p_refs:refs,p_logs:logs});await reload()}
+
+function researchHtml(){
+  const refs=refsOf(),logs=logsOf();
+  return `<details class="panel" id="refPanel"><summary>文献库 · ${refs.length}</summary>
+    <div class="form"><input id="rA" placeholder="作者/年份"><input id="rT" placeholder="标题"><input id="rD" placeholder="DOI 或期刊"><textarea id="rC" placeholder="一句话结论 / 用在哪一节"></textarea><button class="primary" id="rAdd">加入文献库</button></div>
+    ${refs.map((r,i)=>`<div class="codebox"><b>${esc(r.t||'')}</b><p class="meta">${esc(r.a||'')} · ${esc(r.d||'')}</p><p>${esc(r.c||'')}</p><button class="danger" data-refdel="${i}">删除</button></div>`).join('')||'<p class="meta">还没有文献</p>'}</details>
+  <details class="panel" id="logPanel"><summary>实验记录 · ${logs.length}</summary>
+    <div class="form"><input id="lD" type="date"><input id="lB" placeholder="批次/组别"><textarea id="lP" placeholder="参数与条件（温度、时间、转速…）"></textarea><textarea id="lR" placeholder="结果与异常"></textarea><button class="primary" id="lAdd">记一笔</button></div>
+    ${logs.map((r,i)=>`<div class="codebox"><b>${esc(r.d||'')} ${esc(r.b||'')}</b><p class="meta">参数：${esc(r.p||'')}</p><p>${esc(r.r||'')}</p><button class="danger" data-logdel="${i}">删除</button></div>`).join('')||'<p class="meta">还没有记录</p>'}</details>
+  <details class="panel"><summary>导出阶段报告</summary><p class="meta">把当前阶段、清单、评语、文献和实验记录导出为 Markdown，可直接发给导师或用于中期检查。</p><button class="primary" id="expBtn">导出 .md</button></details>`;
+}
+function addResearch(){
+  const app=$('#app');if(!app||!data)return;
+  if(document.getElementById('refPanel'))return;
+  app.insertAdjacentHTML('beforeend',researchHtml());
+  const rAdd=document.getElementById('rAdd');if(rAdd)rAdd.onclick=async()=>{
+    const refs=refsOf().concat([{a:$('#rA').value.trim(),t:$('#rT').value.trim(),d:$('#rD').value.trim(),c:$('#rC').value.trim()}]);
+    try{await saveAux(refs,logsOf());toast('已加入')}catch(e){toast(e.message)}
+  };
+  document.querySelectorAll('[data-refdel]').forEach(b=>b.onclick=async()=>{
+    const i=+b.getAttribute('data-refdel');const refs=refsOf().slice();refs.splice(i,1);
+    try{await saveAux(refs,logsOf())}catch(e){toast(e.message)}
+  });
+  const lAdd=document.getElementById('lAdd');if(lAdd)lAdd.onclick=async()=>{
+    const logs=logsOf().concat([{d:$('#lD').value,b:$('#lB').value.trim(),p:$('#lP').value.trim(),r:$('#lR').value.trim()}]);
+    try{await saveAux(refsOf(),logs);toast('已记录')}catch(e){toast(e.message)}
+  };
+  document.querySelectorAll('[data-logdel]').forEach(b=>b.onclick=async()=>{
+    const i=+b.getAttribute('data-logdel');const logs=logsOf().slice();logs.splice(i,1);
+    try{await saveAux(refsOf(),logs)}catch(e){toast(e.message)}
+  });
+  const ex=document.getElementById('expBtn');if(ex)ex.onclick=exportReport;
+}
+function exportReport(){
+  const ds=defs(),sm=smap();
+  let md='# '+ (data.advisor||'论文') +' 阶段报告\n\n生成时间：'+new Date().toLocaleString()+'\n\n';
+  ds.forEach((st,i)=>{
+    const s=sm[st.id]||{},ck=s.checks||{};
+    md+='## '+(i+1)+'. '+st.t+'\n';
+    md+='- 说明：'+(st.d||'')+'\n';
+    (st.items||[]).forEach((it,j)=>{const c=ck[j]||{};const done=typeof c==='boolean'?c:!!c.done;md+='- ['+(done?'x':' ')+'] '+((c&&c.text)||it)+((c&&c.note)?'（批注：'+c.note+'）':'')+'\n'});
+    md+='- 学生确认：'+(s.owner_ok?'是':'否')+' · 导师确认：'+(s.advisor_ok?'是':'否')+'\n\n';
+  });
+  const refs=refsOf();if(refs.length){md+='## 文献库\n';refs.forEach(r=>md+='- '+r.a+' '+r.t+' ('+r.d+')：'+r.c+'\n')}
+  const logs=logsOf();if(logs.length){md+='\n## 实验记录\n';logs.forEach(r=>md+='- '+r.d+' '+r.b+'｜参数：'+r.p+'｜结果：'+r.r+'\n')}
+  const blob=new Blob([md],{type:'text/markdown'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='阶段报告-'+new Date().toISOString().slice(0,10)+'.md';a.click();
+}
+const _render=render;
+render=function(){_render();try{addResearch()}catch(e){}};
