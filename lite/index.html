@@ -201,7 +201,7 @@ function renderWeek(){
     html+='<tr><th class="slot">'+sl+'<br><span class="small">'+s+'</span></th>';
     for(let wd=0;wd<7;wd++){
       const d=days[wd];const items=[];
-      FIXED.filter(f=>f[0]===((new Date(d+'T12:00').getDay()+6)%7)&&f[1]===sl).forEach(f=>items.push({title:f[2],cat:'课程',lock:true}));
+      FIXED.filter(f=>f[0]===((new Date(d+'T12:00').getDay()+6)%7)&&f[1]===sl).forEach(f=>{const n=f[2];const cat=/射箭|架子鼓|绘画|拼豆/.test(n)?'兴趣':(/FF14/.test(n)?'游戏':(/服药|陪聊|复诊/.test(n)?'生活':'课程'));items.push({title:n,cat:cat,lock:true});});
       S.tasks.filter(x=>x.date===d&&!x.hw).forEach(x=>{
         if(sl==='晚上'&&x.course==='thesis')items.push({title:x.title,cat:'论文',lock:false});
         else if(x.start===s||(!x.start&&sl==='下午'&&wd===6))items.push({title:x.title,cat:catOf(x.course),lock:false});
