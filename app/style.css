@@ -85,3 +85,8 @@ button.big{width:100%;min-height:52px;font-size:16.5px;border-radius:12px}
 .feas.warn{color:#b8860b;background:#fdf6e3}
 .feas.bad{color:#b4453f;background:#fdecec}
 .thesis-now{border:1px dashed var(--pink);background:#fffafc}
+
+.wg-ev.locked{opacity:.95;cursor:default;border-style:dashed}
+.wg-cell.dragover{background:#fff0f6;outline:2px dashed var(--pink);outline-offset:-2px}
+.wg-ev{cursor:grab;position:relative;z-index:2}
+.wg-ev:active{cursor:grabbing}
