@@ -35,3 +35,12 @@ details.panel>summary+*{margin-top:10px}
 
 .x-btn{flex:none;width:30px;height:30px;min-height:30px;padding:0;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:17px;line-height:1;cursor:pointer;align-self:flex-start;margin-top:1px}
 .x-btn:active{background:var(--soft);color:var(--pink)}
+
+.wgroup{margin:10px 0}
+.wgroup h3{font-size:13.5px;margin:10px 0 4px}
+.wrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line)}
+.wrow:last-child{border-bottom:none}
+.wt{font-size:13px;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stars{display:flex;gap:1px;flex:none}
+.stars button{min-height:28px;padding:0 3px;border:none;background:none;font-size:17px;line-height:1;color:#e3d3dc}
+.stars button.on{color:var(--pink)}
