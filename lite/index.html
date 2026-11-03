@@ -46,7 +46,6 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--blue)}
   <div class="panel"><h2>今天要做</h2><div id="todayList"></div>
     <div class="add"><input type="text" id="nt" placeholder="加一条任务"><select id="nc"></select><button id="addBtn">添加</button></div>
   </div>
-  <div class="panel hidden" id="hwPanel"><h2>作业 / 期限任务</h2><div id="hwList"></div></div>
 </section>
 <section id="s-week"><div class="panel"><h2>本周</h2><div class="scroll"><table class="tt" id="tt"></table></div>
   <p class="meta" style="margin-top:8px">蓝=专业课 · 橙=兴趣 · 绿=游戏 · 紫=论文 · 灰=生活；实线不能拖，虚线可拖动改时间段。</p></div></section>
@@ -158,19 +157,22 @@ function render(){
 }
 function renderToday(){
   planToday();
-  const list=S.tasks.filter(x=>x.date===today());
+  const todayStr=today();
+  // 一个列表：今天的 + 有截止日的，全是要完成的任务
+  const list=S.tasks.filter(x=>!x.done).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));
+  const doneList=S.tasks.filter(x=>x.done);
   const l=document.getElementById('todayList');
-  l.innerHTML=list.length?list.map(x=>{
+  const item=x=>{
     const c=CAT[catOf(x.course)]||CAT['专业'];
+    const due=x.date?x.date.slice(5):'未定';
+    const late=x.date&&x.date<todayStr;
     return `<div class="row ${x.done?'done':''}"><input type="checkbox" data-tg="${x.id}" ${x.done?'checked':''}>
-      <div class="rbody"><div class="t">${x.title}</div><div class="small">${x.hw?'作业 · 截止 '+x.date:(COURSES.find(c=>c.id===x.course)||{}).n||''}</div></div>
-      ${x.hw?'':`<button class="x" data-split="${x.id}">×</button>`}</div>`}).join(''):'<p class="meta">今天没有任务</p>';
+      <div class="rbody"><div class="t">${x.title}</div><div class="small">${x.date?(late?'已逾期 · ':'截止 ')+due:'今天'}</div></div>
+      ${x.hw?'':`<button class="x" data-split="${x.id}">×</button>`}</div>`;
+  };
+  l.innerHTML=(list.map(item).join('')||'<p class="meta">今天没有任务</p>')+(doneList.length?'<p class="small" style="margin:10px 0 4px">已完成</p>'+doneList.slice(-5).map(item).join(''):'');
   l.querySelectorAll('[data-tg]').forEach(b=>b.onchange=()=>{const t=S.tasks.find(x=>x.id===b.dataset.tg);t.done=b.checked;if(b.checked)S.bonus++;save();render()});
   l.querySelectorAll('[data-split]').forEach(b=>b.onclick=()=>split(b.dataset.split));
-  const hw=S.tasks.filter(x=>x.hw&&!x.done).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,8);
-  const hp=document.getElementById('hwPanel');hp.classList.toggle('hidden',!hw.length);
-  document.getElementById('hwList').innerHTML=hw.map(x=>`<div class="row"><div class="rbody"><div class="t">${x.title}</div><div class="small">截止 ${x.date}</div></div><button class="x" data-del="${x.id}">删</button></div>`).join('');
-  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{S.tasks=S.tasks.filter(x=>x.id!==b.dataset.del);save();render()});
   const sel=document.getElementById('nc');
   if(!sel.options.length)sel.innerHTML=COURSES.map(c=>`<option value="${c.id}">${c.n}</option>`).join('');
 }
