@@ -9,7 +9,7 @@ const content=await (async()=>{
   try{localStorage.setItem('content-cache',JSON.stringify({v:CONTENT_V,data:d}))}catch(e){}
   return d;
 })();
-if(cloud.session){store.close();store=await new Store(cloud.session.user.id).open();cloud.store=store;}else if(!store.records.length)await store.merge(content);
+if(cloud.session){store.close();store=await new Store(cloud.session.user.id).open();cloud.store=store;} if(!store.records.length)await store.merge(content);
 const QUOTES=['今天不用很厉害，先开始就好。','慢一点没关系，别停。','你已经比昨天多走了一步。','把小事做完，信心就来了。','状态不好时，只做最小的一件。','允许自己休息，休息也是计划的一部分。','不用和别人比，和上周的自己比。','先完成，再完美。','每天一小步，一年就是一大步。','你不是懒，你只是累了。','做完就停，留点力气给明天。','记录本身就是一种进步。'];
 const KNOW=['细胞膜三大功能：分隔、控制物质进出、信息交流。','有氧呼吸三阶段：细胞质基质→线粒体基质→线粒体内膜。','酶的两个特点：高效性、专一性，且需要适宜温度与 pH。','蛋白质基本单位是氨基酸，靠肽键（—CO—NH—）连接。','DNA：脱氧核糖、双链、A/T/G/C；RNA：核糖、单链、A/U/G/C。','主动运输：需要载体、消耗 ATP、可逆浓度。','氨基酸通式：中心碳连 —NH₂、—COOH、—H、—R。','美拉德反应：糖和氨基酸加热产生褐色和香气（烤面包、煎肉）。','淀粉糊化：加热吸水膨胀变黏（勾芡、煮粥）。','锂盐期间多喝水，脱水会让血锂浓度升高。','每天固定时间称重，比每天称好几次更准。','复习时先合上书默想，比反复读有效。'];
 function dailyQuote(){const d=new Date();const seed=d.getFullYear()*372+(d.getMonth()+1)*31+d.getDate();return {q:QUOTES[seed%QUOTES.length],k:KNOW[(seed*7)%KNOW.length]}}
