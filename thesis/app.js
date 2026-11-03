@@ -434,7 +434,7 @@ render = function(){
   } else {
     body=INFO_HTML;
   }
-  app.innerHTML=`<div class="tabs">${tabs.map(([k,n])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}`;
+  app.innerHTML=`<div class="tabs">${tabs.map(([k,n])=>`<button class="${tab===k?'on':''}" data-tab="${k}">${n}</button>`).join('')}</div>${body}${tPicker()}`;
 
   document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.getAttribute('data-tab');render()});
   const rf=$('#refresh');if(rf)rf.onclick=()=>load();
@@ -532,3 +532,22 @@ render = function(){
   };
 };
 load();
+
+/* ===== 主题色 ===== */
+const TTHEMES=[['玫瑰','#b43b70','#f9e9ef'],['天蓝','#2f6fb3','#e8f1fb'],['青绿','#1f7a52','#e6f6ee'],['葡萄','#6b4bb8','#f0ebfb'],['焦糖','#b8621f','#fbeee2'],['墨黑','#2f3337','#eef0f2']];
+function tApply(){
+  let i=Number(localStorage.getItem('theme')||0);if(!TTHEMES[i])i=0;
+  document.documentElement.style.setProperty('--pink',TTHEMES[i][1]);
+  document.documentElement.style.setProperty('--soft',TTHEMES[i][2]);
+}
+function tPicker(){
+  const cur=Number(localStorage.getItem('theme')||0);
+  return `<div class="theme-bar"><span class="meta">主题色</span>${TTHEMES.map((t,i)=>`<button class="sw ${i===cur?'on':''}" data-ttheme="${i}" title="${t[0]}" style="background:${t[1]}"></button>`).join('')}</div>`;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-ttheme]');
+  if(!b)return;e.preventDefault();e.stopImmediatePropagation();
+  localStorage.setItem('theme',b.getAttribute('data-ttheme'));
+  tApply();render();
+},true);
+tApply();
