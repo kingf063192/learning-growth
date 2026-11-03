@@ -5,3 +5,28 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}button:focus-visi
 .quote-card{background:var(--soft);border-color:#f0d6e2}
 .quote-card .q{font-size:15px;margin:0 0 6px;color:#7a2b52;line-height:1.65}
 .quote-card .meta{margin:0}
+
+.goal-row{padding:11px 0;border-bottom:1px dashed var(--line)}
+.goal-row:last-child{border-bottom:none;padding-bottom:2px}
+.goal-head{display:flex;justify-content:space-between;align-items:baseline;font-size:14.5px}
+.goal-head b{font-weight:600}
+.goal-head span{color:var(--pink);font-weight:700}
+.goal-row .progress{margin:7px 0 5px}
+.goal-row .meta{margin:0 0 7px}
+details.panel>summary{cursor:pointer;list-style:none;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::after{content:'展开';font-size:12px;color:var(--muted);font-weight:400}
+details.panel[open]>summary::after{content:'收起'}
+details.panel>summary+*{margin-top:10px}
+.reward-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.reward-grid .panel{margin:0;padding:12px 10px;text-align:center}
+.reward-grid h3{font-size:13px;margin:0 0 4px;line-height:1.35}
+.reward-grid p{margin:0 0 6px;font-size:12.5px}
+.reward-grid .meta{display:none}
+.reward-grid button{width:100%;min-height:36px;padding:5px 8px;font-size:13px}
+.agenda-day{padding:10px 0;border-bottom:1px solid var(--line)}
+.agenda-day:last-child{border-bottom:none}
+.agenda-day .dayhead{font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:2px}
+.agenda-day .dayhead.today{color:var(--pink)}
+.meta.danger{color:#b4453f}
+@media(max-width:560px){.reward-grid{grid-template-columns:repeat(2,1fr)}}
