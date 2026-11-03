@@ -763,7 +763,7 @@ renderWeek = function(){
 /* 拖动：桌面用 HTML5 DnD，iPad 用指针长按拖动 */
 let dragId=null,dragLock=false,ghost=null;
 document.addEventListener('dragstart',e=>{
-  const el=e.target.closest&&e.target.closest('.wg-ev'); if(!el||el.dataset.lock==='1')return;
+  const el=e.target.closest&&e.target.closest('.wg2-ev'); if(!el||el.dataset.lock==='1')return;
   dragId=el.dataset.tid; dragLock=false; e.dataTransfer.setData('text/plain',dragId);
 },true);
 document.addEventListener('dragover',e=>{
@@ -786,7 +786,7 @@ document.addEventListener('drop',async e=>{
 
 let pressTimer=null,pressing=null,ghostEl=null;
 document.addEventListener('pointerdown',e=>{
-  const el=e.target.closest&&e.target.closest('.wg-ev');
+  const el=e.target.closest&&e.target.closest('.wg2-ev');
   if(!el||el.dataset.lock==='1')return;
   pressing={id:el.dataset.tid,x:e.clientX,y:e.clientY,moved:false};
   pressTimer=setTimeout(()=>{
@@ -820,3 +820,39 @@ document.addEventListener('pointerup',async e=>{
   }
   pressing=null;
 },true);
+
+/* ===== 行程：重写为绝对定位周课表（修重叠/错位/重复） ===== */
+const HOUR_PX=46, DAY_START=7*60;
+renderWeek = function(){
+  const dates=Array.from({length:7},(_,i)=>addDays(week,i));
+  const todayStr=today();
+  const hours=Array.from({length:15},(_,i)=>i+7);
+  return `<div class="panel"><div class="toolbar">${action('← 上一周','prevWeek')}${action('本周','thisWeek')}${action('下一周 →','nextWeek')}<b style="margin-left:auto">${week} — ${addDays(week,6)}</b></div>
+  <p class="meta">蓝=上课 <span class="dotc" style="background:#5b8def"></span> 紫=论文 <span class="dotc" style="background:#8b6cd9"></span> 绿=考研 <span class="dotc" style="background:#2fa36b"></span> 橙=兴趣 <span class="dotc" style="background:#d97a3a"></span> 灰=生活 <span class="dotc" style="background:#9aa0a6"></span>；🔒 不能拖，其余可拖</p>
+  <div class="week-scroll">
+    <div class="wg2-head"><div class="wg2-corner"></div>${dates.map((d,i)=>`<div class="wg2-hd ${d===todayStr?'today':''}">${['一','二','三','四','五','六','日'][i]}<br><span>${d.slice(5)}</span></div>`).join('')}</div>
+    <div class="wg2-body">
+      <div class="wg2-times">${hours.map(h=>`<div class="wg2-t">${String(h).padStart(2,'0')}:00</div>`).join('')}</div>
+      ${dates.map(d=>{
+        const evs=[];
+        fixedForDay(d).forEach(f=>evs.push({...f,lock:true}));
+        tasks().filter(t=>t.date===d&&t.start).forEach(t=>{
+          const dup=evs.some(f=>f.title===t.title&&f.start===t.start);
+          if(!dup)evs.push({...t,lock:false});
+        });
+        return `<div class="wg2-col ${d===todayStr?'today':''}">
+          ${hours.map(h=>`<div class="wg2-line" data-cell="${d}:${h}" style="top:${(h*60-DAY_START)/60*HOUR_PX}px"></div>`).join('')}
+          ${evs.map(t=>{
+            const st=m2(t.start), en=m2(t.end||t.start)||(st+30);
+            const top=(st-DAY_START)/60*HOUR_PX, hgt=Math.max(HOUR_PX*0.5,(en-st)/60*HOUR_PX-2);
+            const c=colorOf(t);
+            return `<button class="wg2-ev ${t.lock?'locked':''}" data-tid="${esc(t.id)}" data-lock="${t.lock?1:0}" ${t.lock?'':'draggable="true"'}
+              style="top:${top}px;height:${hgt}px;background:${c.bg};border-color:${c.bd};color:${c.tx}">
+              <b>${t.lock?'🔒 ':''}${esc(t.title)}</b><span>${esc(t.start||'')}${t.end?'–'+esc(t.end):''}</span>
+            </button>`;
+          }).join('')}
+        </div>`;
+      }).join('')}
+    </div>
+  </div></div>`;
+};
