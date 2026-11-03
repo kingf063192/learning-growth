@@ -1020,4 +1020,73 @@ renderToday = (function(prev){
   };
 })(renderToday);
 
-(async()=>{try{await ensureHomeworkRecords()}catch(e){};try{await ensureDailyStudy()}catch(e){}})();
+(async()=>{try{await ensureHomeworkRecords()}catch(e){};try{await ensureFinalGoalTasks()}catch(e){};try{await ensureDailyStudy()}catch(e){}})();
+
+/* ===== 优先级：期末专业课 > 英语 > 考研专业课 > 政治；难的先排 ===== */
+const FINALS=['g-inorg','g-org','g-food'];
+const DIFFICULTY={'g-org':3,'g-inorg':2,'g-biochem':2,'g-cell':2,'g-food':1,'g-eng':1,'g-politics':1};
+function tierOf(t){
+  if(FINALS.includes(t.courseId))return 0;
+  if(t.courseId==='g-eng')return 1;
+  if(t.courseId==='g-politics')return 3;
+  return 2;
+}
+function prioOf(t){return tierOf(t)*10 - (DIFFICULTY[t.courseId]||1)}
+
+ensureDailyStudy = async function(){
+  const t=today();
+  const todayTasks=tasks().filter(x=>x.date===t&&x.category!=='固定课程'&&x.courseId!=='g-thesis');
+  if(todayTasks.length>=6)return;
+  const cands=tasks().filter(x=>x.category!=='固定课程'&&x.courseId!=='g-thesis'&&!x.done&&(!x.date||x.date>t)&&!isHomework(x)&&STUDY_OK.includes(x.courseId));
+  const wOf=x=>Number(x.weight)||Number(chapter(x)?.weight)||1;
+  cands.sort((a,b)=>prioOf(a)-prioOf(b)||wOf(b)-wOf(a));
+  const countBy=cid=>todayTasks.filter(x=>x.courseId===cid).length;
+  const picks=[];
+  for(const c of cands){
+    if(picks.length>=6-todayTasks.length)break;
+    const cid=c.courseId;
+    if(FINALS.includes(cid)){ if(countBy(cid)>=3)continue; }
+    else if(cid==='g-eng'){ if(countBy(cid)>=1)continue; }
+    else if(cid==='g-politics'){ if(t<'2027-07-01'||countBy(cid)>=1)continue; }
+    else { if(countBy(cid)>=1)continue; }
+    picks.push(c);
+  }
+  for(const x of picks)await store.put({...x,date:t,start:'',end:''});
+  if(picks.length){render();try{await cloud.sync()}catch(e){}}
+};
+
+/* 每次排时间：难课优先放前面 */
+scheduleToday = (function(prev){
+  return async function(){
+    const list=tasks().filter(x=>x.date===today()&&x.category!=='固定课程'&&!x.start&&!x.done);
+    if(list.length&&freeWindows().length){
+      const free=freeWindows();
+      list.sort((a,b)=>prioOf(a)-prioOf(b));
+      for(const x of list){
+        let dur=Number(x.duration)||30;
+        const st=takeSlot(free,Math.min(dur,30),10);
+        if(st==null)break;
+        await store.put({...x,start:h2(st),end:h2(st+Math.min(dur,30))});
+      }
+    }
+    if(typeof prev==='function')await prev();
+  };
+})(scheduleToday);
+
+/* 冲 90 分任务：每门期末课 3 步，12 月底前完成 */
+async function ensureFinalGoalTasks(){
+  const specs=[];
+  const due=['2026-12-13','2026-12-20','2026-12-27'];
+  FINALS.forEach(cid=>{
+    const c=store.get(cid); if(!c)return;
+    const brief=(c.title||'').replace(/[：:].*$/,'');
+    const steps=['过一遍课件和重点','做往年题/课后题','背名词解释和简答'];
+    steps.forEach((st,i)=>{
+      specs.push({id:`goal90:${cid}:${i+1}`,courseId:cid,title:`${brief} · 冲90：${st}`,date:due[i],duration:45,category:'课程'});
+    });
+  });
+  for(const r of specs){
+    if(store.get(r.id))continue;
+    await store.put({...r,kind:'task',done:false,start:'',end:''});
+  }
+}
