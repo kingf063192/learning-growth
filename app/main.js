@@ -28,7 +28,22 @@ const shortDate = d => (d || '').slice(5);
 
 /* ── 全局状态 ── */
 let store = await new Store('local').open();
-let cloud = new Cloud(store, s => { const el = $('#sync'); if (el) el.textContent = s; });
+/* 自动合并的汇总提示：整批只弹一次，60 秒后台同步不反复打扰 */
+let lastSummaryAt = 0;
+function summaryToast(sum) {
+  const n = sum.same + sum.remote + sum.local + sum.merged;
+  if (!n) return;
+  if (sum.failed) return; /* 有失败的由状态栏说明，避免两条信息打架 */
+  const now = Date.now();
+  if (now - lastSummaryAt < 20000) return;
+  lastSummaryAt = now;
+  const parts = [];
+  if (sum.merged) parts.push(`字段级合并 ${sum.merged}`);
+  if (sum.local) parts.push(`本机优先 ${sum.local}`);
+  if (sum.remote) parts.push(`云端优先 ${sum.remote}`);
+  toast(`已自动合并 ${n} 条冲突${parts.length ? '（' + parts.join(' · ') + '）' : ''}，明细见 设置 → 同步`);
+}
+let cloud = new Cloud(store, s => { const el = $('#sync'); if (el) el.textContent = s; }, summaryToast);
 const content = await fetch('./app/content.json').then(r => r.json()).catch(() => []);
 
 let page = 'today';
@@ -169,9 +184,9 @@ async function refreshAuto() { await ensureSeed(); await ensureChapterTasks(); a
 function conflictBanner() {
   const n = conflictRows().length;
   if (!n) return '';
-  return `<section class="panel notice"><b>有 ${n} 条同步冲突待处理</b>
-    <p>两台设备同时改了同一条记录。两版都已经保存在本机，选一个作为最终版本就好。</p>
-    <div class="toolbar">${action('去处理', 'conflictList', '', 'primary')}</div></section>`;
+  return `<section class="panel notice"><b>${n} 条冲突待确认</b>
+    <p>同步时已按记录自动合并：能合并的都合并了，这几条两台设备改的是同一个字段，选一个作为最终版本就好。</p>
+    <div class="toolbar">${action('查看并处理', 'conflictList', '', 'primary')}</div></section>`;
 }
 function todayItems() {
   const d = today();
@@ -401,7 +416,8 @@ function renderSettings() {
     <div class="panel"><h2>账号与云端同步</h2>
       <p>${cloud.session ? '已登录：' + esc(cloud.session.user.email) : '本地模式 · 尚未开启跨设备同步'}</p>
       <p class="meta">同一账号在 iPhone / iPad / PC 登录，数据一致；离线先存本机，联网自动同步。</p>
-      ${cloud.session ? `<div class="toolbar">${action('同步 / 重试', 'sync')}${action('将本地记录合并到此账号', 'mergeLocal')}${action('退出账号', 'logout')}</div>`
+      ${cloud.session && cloud.needsLogin ? `<div class="notice"><b>登录已过期</b>　本机数据都在，重新输入密码就能继续同步。请<b>不要</b>点「退出账号」——那会清掉本机缓存。</div><form data-form="login">${input('邮箱', 'email', cloud.session.user.email || '', 'email', 'required autocomplete="username"')}${input('密码', 'password', '', 'password', 'required minlength="6" autocomplete="current-password"')}<button class="primary" name="mode" value="login">重新登录</button></form>`
+      : cloud.session ? `<div class="toolbar">${action('同步 / 重试', 'sync')}${action('将本地记录合并到此账号', 'mergeLocal')}${action('退出账号', 'logout')}</div>`
       : `<form data-form="login">${input('邮箱', 'email', '', 'email', 'required autocomplete="username"')}${input('密码', 'password', '', 'password', 'required minlength="6" autocomplete="current-password"')}<button class="primary" name="mode" value="login">登录</button> <button name="mode" value="signup">注册</button></form>`}
     </div>
     <div class="panel"><h2>主题色</h2><p class="meta">存在本机，也会随账号同步。</p>
@@ -426,9 +442,12 @@ function renderSettings() {
       <p class="meta">登录窗口在论文平台里：学生本人用导师链接打开时，点右上角「学生登录」也能切回学生端。</p>
     </div>
     <div class="panel"><h2>iPhone / iPad 安装</h2><ol><li>用 Safari 打开部署后的网站。</li><li>点“分享”。</li><li>选择“添加到主屏幕”。</li><li>从主屏幕图标打开；首次联网后即可离线启动。</li></ol></div>
-    <div class="panel"><h2>同步冲突${conflictRows().length ? ' · ' + conflictRows().length : ''}</h2>
-      ${conflictRows().map(r => `<div class="row"><div class="body">${esc(r.title || r.id)}<p class="meta">${esc(r.kind || '')} · 本机和云端都改过，两版都已保留在本机。</p>${action('查看两版并处理', 'resolve', r.id)}</div></div>`).join('') || empty('暂无待处理冲突')}
-      ${conflictRows().length ? `<div class="toolbar">${action('全部采用云端版本', 'useRemoteAll')}${action('全部保留本机', 'useLocalAll')}</div>` : ''}
+    <div class="panel"><h2>同步与合并${conflictRows().length ? ' · ' + conflictRows().length + ' 条待确认' : ''}</h2>
+      <p class="meta">同步时按记录自动合并，整批只提示一次；合并明细记在本机，可导出核对。</p>
+      <p class="meta">${syncProfileText()}</p>
+      <p class="meta">${realtimeText()}</p>
+      ${conflictRows().map(r => `<div class="row"><div class="body">${esc(r.title || r.id)}<p class="meta">${esc(r.kind || '')} · 两边改的是同一个字段，两版都已保留在本机。</p>${action('查看两版并处理', 'resolve', r.id)}</div></div>`).join('') || empty('暂无待确认冲突')}
+      <div class="toolbar">${conflictRows().length ? action('全部采用云端版本', 'useRemoteAll') + action('全部保留本机', 'useLocalAll') : ''}${mergeLogRows().length ? action('导出自动合并记录', 'mergeLog') : ''}${conflictRows().length ? action('导出这两版备份', 'exportConflicts') : ''}</div>
     </div>
   </div></div>`;
 }
@@ -689,10 +708,11 @@ async function handle(name, key) {
     }
     case 'useRemote': case 'useLocal': {
       const remote = t.conflict;
-      download(t, '同步冲突备份-' + hash(key) + '.json');
+      if (!remote) { closeModal(); toast('这条冲突已经处理过了'); break; }
       const next = name === 'useRemote'
         ? stripConflict({ ...remote.payload, id: t.id, version: remote.version, dirty: false, mutation: id() })
         : stripConflict({ ...t, version: remote.version, dirty: true, mutation: id() });
+      delete next._base;
       await store.transaction([next]);
       closeModal(); await cloud.sync(); render(); toast('已处理这条冲突');
       break;
@@ -701,13 +721,31 @@ async function handle(name, key) {
       const rows = conflictRows();
       if (!rows.length) { toast('没有待处理冲突'); break; }
       const toCloud = name === 'useRemoteAll';
-      if (!confirm(`把 ${rows.length} 条冲突全部采用「${toCloud ? '云端' : '本机'}」版本？会先下载一份两版备份。`)) break;
-      for (const r of rows) download(r, '同步冲突备份-' + hash(r.id) + '.json');
-      const next = rows.map(r => toCloud
-        ? stripConflict({ ...r.conflict.payload, id: r.id, version: r.conflict.version, dirty: false, mutation: id() })
-        : stripConflict({ ...r, version: r.conflict.version, dirty: true, mutation: id() }));
+      if (!confirm(`把 ${rows.length} 条冲突全部采用「${toCloud ? '云端' : '本机'}」版本？`)) break;
+      /* 不再逐条下载 251 个文件（手机浏览器会拦掉）；需要备份时用「导出这两版备份」一次性导出 */
+      const next = rows.map(r => {
+        const o = toCloud
+          ? stripConflict({ ...r.conflict.payload, id: r.id, version: r.conflict.version, dirty: false, mutation: id() })
+          : stripConflict({ ...r, version: r.conflict.version, dirty: true, mutation: id() });
+        delete o._base;
+        return o;
+      });
       await store.transaction(next);
       closeModal(); await cloud.sync(); render(); toast(`已处理 ${rows.length} 条冲突`);
+      break;
+    }
+    case 'exportConflicts': {
+      const rows = conflictRows().map(r => ({ id: r.id, kind: r.kind, title: r.title, local: stripConflict(r), remote: r.conflict }));
+      if (!rows.length) { toast('没有待处理冲突'); break; }
+      download({ exportedAt: new Date().toISOString(), rows }, '同步冲突两版备份-' + today() + '.json');
+      toast('已导出 ' + rows.length + ' 条两版备份');
+      break;
+    }
+    case 'mergeLog': {
+      const rows = mergeLogRows();
+      if (!rows.length) { toast('还没有自动合并记录'); break; }
+      download({ exportedAt: new Date().toISOString(), rows }, '自动合并记录-' + today() + '.json');
+      toast('已导出 ' + rows.length + ' 条合并记录');
       break;
     }
 
@@ -752,6 +790,30 @@ function showPreviewModal(p) {
 }
 
 /* ── 备份 ─────────────────────────────────────────────────── */
+/* 同步时自动合并的明细（cloud.js 写入，这里只读一次做展示/导出） */
+const mergeLogRows = () => { try { const rows = JSON.parse(localStorage.getItem('growth-merge-log') || '[]'); return Array.isArray(rows) ? rows : []; } catch { return []; } };
+/* 同步耗时拆成几段，卡在哪段一眼能看出来 */
+const syncProfileText = () => {
+  const p = cloud.lastProfile;
+  if (!p) return '本机还没有同步过：登录并联网后会自动开始。';
+  if (p.error) return `上次同步失败：${esc(p.error)}`;
+  const sec = ms => (ms >= 1000 ? (ms / 1000).toFixed(1) + ' 秒' : Math.round(ms) + ' 毫秒');
+  const parts = [`总计 ${sec(p.total)}`];
+  if (p.pushed) parts.push(`推送 ${p.pushed} 条 ${sec(p.push)}`);
+  if (p.pulled) parts.push(`拉取 ${p.pulled} 条 ${sec(p.pull)}`);
+  if (p.resolve) parts.push(`合并 ${sec(p.resolve)}`);
+  if (p.refresh > 30) parts.push(`登录续期 ${sec(p.refresh)}`);
+  return `上次同步：${parts.join(' · ')}`;
+};
+/* 实时通道状态（cloud.js 的 WebSocket；失败不影响轮询） */
+const realtimeText = () => {
+  const s = cloud.realtimeStatus;
+  if (!cloud.session) return '实时通道：未登录，登录后自动尝试。';
+  if (s === 'ok') return '实时通道：已连接 —— 云端一改就推送（1 秒内），轮询降到 60 秒兜底。';
+  if (s === 'connecting' || s === 'reconnecting') return '实时通道：连接中…（当前仍按 15 秒轮询）。';
+  if (s === 'error') return '实时通道：连上了但订阅被拒（多半是没把 records 加进 publication，或没有 SELECT 策略）· 仍按 15 秒轮询。';
+  return '实时通道：未启用 · 按 15 秒轮询。';
+};
 function download(obj, name) {
   const a = document.createElement('a');
   const u = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
@@ -842,7 +904,7 @@ document.addEventListener('submit', async e => {
       case 'login': {
         await cloud.login(d.email, d.password, e.submitter?.value === 'signup');
         store.close(); store = await new Store(cloud.session.user.id).open(); cloud.store = store;
-        await ensureSeed(); await refreshAuto(); closeModal(); await cloud.sync(); render(); break;
+        await ensureSeed(); await refreshAuto(); closeModal(); await cloud.sync(); cloud.startRealtime(); render(); break;
       }
       default: break;
     }
@@ -932,8 +994,24 @@ window.addEventListener('hashchange', () => {
   const p = location.hash.slice(1);
   if (['today', 'week', 'courses', 'life', 'settings'].includes(p)) { page = p; render(); }
 });
-window.addEventListener('focus', async () => { store.records = await store.readAll(); await cloud.sync(); render(); });
-setInterval(() => { if (!document.hidden) cloud.sync().then(() => { if (!$('#modal').open) render(); }); }, 60000);
+/* 三端互通：连上实时通道时 60 秒兜底，否则可见时 15 秒一轮（平时只发一个 head 请求） */
+let syncTimer = 0, lastFocusSync = 0;
+const SYNC_VISIBLE_MS = 15000, SYNC_HIDDEN_MS = 60000, SYNC_REALTIME_MS = 60000;
+window.addEventListener('focus', async () => { store.records = await store.readAll(); const now = Date.now(); if (now - lastFocusSync > 8000) { lastFocusSync = now; await cloud.sync(); } render(); });
+const syncTick = () => { if (document.hidden) return; cloud.sync().then(() => { if (!$('#modal').open) render(); }); };
+const syncInterval = () => (document.hidden ? SYNC_HIDDEN_MS : (cloud.realtimeOk ? SYNC_REALTIME_MS : SYNC_VISIBLE_MS));
+const scheduleSync = () => { clearInterval(syncTimer); syncTimer = setInterval(syncTick, syncInterval()); };
+document.addEventListener('visibilitychange', () => { scheduleSync(); if (!document.hidden) syncTick(); });
+scheduleSync();
+/* 实时通道连上/断开都会改节奏，连上后云端一改就在 1 秒内拉到 */
+cloud.onRealtime = (state) => { if (state === 'ok') scheduleSync(); };
+cloud.onRealtimeSync = () => { if (!$('#modal').open) render(); };
+cloud.onAuthExpired = () => {
+  /* 登录过期：不清数据，只提示并把人送到设置页的重新登录表单 */
+  toast('登录已过期：本机数据都在，去 设置 → 账号 重新登录即可');
+  render();
+};
+cloud.startRealtime();
 
 /* ── 渲染入口（唯一一处） ─────────────────────────────────── */
 const PAGES = { today: ['☀', '今日'], week: ['▦', '行程'], courses: ['▤', '学习'], life: ['♡', '生活'], settings: ['⚙', '设置'] };
@@ -949,13 +1027,13 @@ function render() {
 /* ── 启动 ─────────────────────────────────────────────────── */
 applyTheme(settings().theme);
 page = Object.keys(PAGES).includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today';
-render();
-await ensureSeed();
-await ensureChapterTasks();
-await ensureHomework();
-await ensureDaily();
+/* 先同步再补数据：否则本机先生成上百条种子/补任务，全都撞上云端版本，
+   一次就攒出几百条冲突（旧版就是这么来的）。补完只把新增的少量记录再推一次。 */
 render();
 await cloud.sync();
+await refreshAuto();
+render();
+if (store.records.some(x => x.dirty)) await cloud.sync();
 render();
 
 if ('serviceWorker' in navigator) {

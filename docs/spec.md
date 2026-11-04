@@ -8,7 +8,7 @@
 1. 禁止「追加覆盖函数」式打补丁：同一个 `renderXxx` 只允许定义一次。
 2. 不新增构建步骤、不引入框架、不引入付费 API。
 3. 只使用 Supabase 现有 URL + publishable key（已在 `app/config.js`）。
-4. `/thesis/` 与 `*.sql` 一律不动。
+4. `/thesis/` 与既有 `*.sql` 一律不动；需要新增服务端能力时，在 `supabase/upgrade-*.sql` 里写**可选**升级脚本：可重复执行，且客户端在没有它时必须能自动回退。
 5. 改完必须把 `sw.js` 的 `VERSION` 从 `growth-shell-v2` 改成 `growth-shell-v3`。
 
 ## 1. 文件与责任
@@ -21,8 +21,8 @@
 | `app/style.css` | 全部样式（6 套主题 + 行程网格 + 响应式） |
 | `index.html` | 外壳 |
 | `sw.js` | Service Worker，仅版本号 |
-| `app/store.js` | IndexedDB（不动） |
-| `app/cloud.js` | Supabase 同步（不动） |
+| `app/store.js` | IndexedDB；`put()` 额外保存 `_base`（上次同步成功的内容快照，供三方合并） |
+| `app/cloud.js` | Supabase 同步 + 记录级自动合并（见第 9 节） |
 
 ## 2. 六个时段（全局唯一来源）
 
@@ -335,6 +335,29 @@ export const SLOTS=[
 - 论文：**不参与每日挑选**，每学期周固定给 1 条（周三）。
 - 兴趣（`g-dou` `g-draw` `g-drum`）：**每周各至少 1 次**，未满足则补。
 
-## 9. 验收（第 9 节清单，必须逐条自测）
+## 9. 同步与冲突合并（`cloud.js` / `core.js`）
+
+原则：**按记录自动合并，整批只提示一次**，不再逐条弹确认，也不自动下载几百个附件。
+
+1. 推送前先把本机历史遗留的 `conflict` 全部自动落地（`autoResolveConflicts`），不再等用户点击。
+2. 每条冲突由 `cloud.js#resolvePair` 决定：
+
+   | 情况 | 处理 | 计入 |
+   | --- | --- | --- |
+   | 两版内容一样（忽略同步元数据） | 采纳云端 | `same` |
+   | 云端已删除 / 本机已删除 | 删除优先 | `remote` |
+   | 派生记录（`award` / `opening` / `redemption`，或 `auto===true`，或 id 前缀 `award:` `fix:` `seed:` `opening:`） | 采纳云端，缺了会重算 | `remote` |
+   | 其它（用户编辑的课程 / 章节 / 任务） | `core.js#mergePayloads` 逐字段三方合并，两边都改的字段本机优先 | `merged` / `local` |
+
+3. 三方合并的基准是本机记录的 `_base`（`store.put()` 在写入前拍的上次同步快照）。没有 `_base` 的旧记录按「两边字段取并集、同名字段本机优先」处理。
+4. 合并明细写入 `localStorage['growth-merge-log']`（最多 200 条，含字段级差异），设置页「导出自动合并记录」一次性导出；需要两版原文时用「导出这两版备份」，都是单文件、只在你点击时下载。
+5. 状态文案：无冲突时 `已同步`；仍有待确认时 `已同步 · N 条待确认`；有脏记录时 `同步中 · 有待提交修改`；网络/服务端错误才是 `同步失败 · …`。
+6. 推送顺序：`sync()` 先拉（含合并）→ 再推脏记录 → 再取一次 `sync_head` 拉增量。服务端提供 `apply_records(jsonb)` 时一次批量提交（每批 200 条），没有该函数时自动退回逐条并发 5；拉取每页 500 条。
+7. 启动顺序：`cloud.sync()` → `refreshAuto()`（种子 / 章节任务 / 作业 / 每日补任务）→ 有脏记录时再 `sync()`。先补后同步会一次生成上百条记录全部撞版本，这正是历史 251 条冲突的来源。
+8. 三端互通节奏：页面可见时每 15 秒一轮，切到后台降到 60 秒；没有脏记录且 `head` 未变时一轮只发 1 个 `sync_head` 请求就结束。窗口重新获得焦点、网络恢复时立即补一轮（焦点触发 8 秒内不重复）。
+9. 每次同步的分段耗时（鉴权 / 合并 / 推送 / 拉取 / 总计 / 条数）写入 `localStorage['growth-sync-profile']`（保留最近 12 次），设置页「同步与合并」显示最近一次。
+10. 实时通道（可选加速）：登录且 `access_token` 是 JWT 时，`startRealtime()` 连 `wss://<project>.supabase.co/realtime/v1/websocket?apikey=<key>&vsn=1.0.0`，用 phoenix 协议 join `realtime:public:records:user_id=eq.<uid>`（`postgres_changes` 订阅，事件名 `*`），25 秒发一次心跳。收到 `postgres_changes` 后**不直接写库**：400 毫秒去抖后调一次 `sync()`，由正常同步路径落地。连接失败按 1/2/5/15/30/60 秒退避重连；`phx_reply` 报 error（未开 publication / 无 SELECT 策略）只是把状态记成 `error`，轮询照常。连上后轮询从 15 秒放宽到 60 秒兜底。服务端配合见 `supabase/upgrade-realtime.sql`（可选）。
+
+## 10. 验收（第 9 节清单，必须逐条自测）
 
 见 `../docs/acceptance.md`。

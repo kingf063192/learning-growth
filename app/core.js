@@ -451,3 +451,47 @@ export function validateRecords(rows) {
   }
   return rows;
 }
+
+/* ── 记录级自动合并（同步用，纯函数） ───────────────────────
+ * 背景：两台设备都改过同一条记录时，服务端只能回「冲突」。
+ * 这里按记录逐字段三方合并：只有同一个字段两边都改成了不同的值，才需要人看一眼；
+ * 其余情况两边都能留下，不必逐条确认。
+ * version / mutation / dirty 等只是同步元数据，不参与内容比较。 */
+export const VOLATILE_KEYS = ['version', 'mutation', 'dirty', 'conflict', 'updatedAt', '_baseVersion', '_base', '_merge', '_partial'];
+/* 去掉同步元数据，只留真正的记录内容（发给云端的就是这份） */
+export const payloadOnly = r => {
+  const o = {};
+  for (const k of Object.keys(r || {})) if (!VOLATILE_KEYS.includes(k) && r[k] !== undefined) o[k] = r[k];
+  return o;
+};
+export const samePayload = (a, b) => {
+  if (!a || !b) return false;
+  const ka = Object.keys(a).filter(k => !VOLATILE_KEYS.includes(k) && a[k] !== undefined).sort();
+  const kb = Object.keys(b).filter(k => !VOLATILE_KEYS.includes(k) && b[k] !== undefined).sort();
+  if (ka.length !== kb.length || ka.some((k, i) => k !== kb[i])) return false;
+  return ka.every(k => JSON.stringify(a[k]) === JSON.stringify(b[k]));
+};
+/* 派生记录：由程序补出来的积分、余额、每日补任务等，重算即可，不必让用户选。
+   用户自己编辑的课程 / 章节 / 任务不在此列，不会被云端版本覆盖。 */
+export const isDerivedRecord = r => !!r && (r.auto === true
+  || ['award', 'opening', 'redemption'].includes(r.kind)
+  || /^(award|fix|seed|opening):/.test(String(r.id || '')));
+/* 三方合并：base = 上一次同步成功的版本，local = 本机，remote = 云端。
+   返回 { merged, fields }：merged 是合并后的内容，fields 是「两边都改过、取了本机」的字段名。 */
+export function mergePayloads(base, local, remote) {
+  const b = payloadOnly(base || {}), l = payloadOnly(local || {}), r = payloadOnly(remote || {});
+  const merged = {}, fields = [];
+  const keys = [...new Set([...Object.keys(b), ...Object.keys(l), ...Object.keys(r)])];
+  const j = v => JSON.stringify(v);
+  for (const k of keys) {
+    const lv = l[k], rv = r[k], bv = b[k];
+    if (j(lv) === j(rv)) { if (lv !== undefined) merged[k] = lv; continue; }
+    const localChanged = j(lv) !== j(bv), remoteChanged = j(rv) !== j(bv);
+    if (localChanged && !remoteChanged) { if (lv !== undefined) merged[k] = lv; continue; }
+    if (remoteChanged && !localChanged) { if (rv !== undefined) merged[k] = rv; continue; }
+    /* 两边都改：本机优先，但记下来，汇总里能看出哪几条需要复核 */
+    fields.push(k);
+    if (lv !== undefined) merged[k] = lv;
+  }
+  return { merged, fields };
+}
